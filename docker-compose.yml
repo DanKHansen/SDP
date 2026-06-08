@@ -1,0 +1,37 @@
+# SDP - Sovereign Data Platform
+# Minimum viable stack for local development & testing
+# Status: Build-in-Progress (PoC Phase)
+
+version: '3.8'
+
+services:
+  # MinIO: S3-compatible Object Storage (Data Lake foundation)
+  minio:
+    image: minio/minio:latest
+    container_name: sdp-minio
+    ports:
+      - "9000:9000"   # API
+      - "9001:9001"   # Console UI
+    environment:
+      MINIO_ROOT_USER: sdp-admin
+      MINIO_ROOT_PASSWORD: change-me-in-prod-securely
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    restart: unless-stopped
+
+  # Keycloak: Identity & Access Management (IAM)
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: sdp-keycloak
+    ports:
+      - "8080:8080"
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: change-me-in-prod-securely
+    command: start-dev
+    depends_on:
+      - minio
+
+volumes:
+  minio-data:
