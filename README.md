@@ -47,34 +47,7 @@ The business model is **Open Core**: providing a free, fully functional Communit
 
 ---
 
-## 3. Business Model: Open Core Strategy
-
-### 3.1. The "Free" Tier (Community Edition)
-
-- **Target:** Developers, Startups, R&D.
-- **Includes:** Full stack functionality, basic deployment scripts, community support.
-- **Limitations:** No advanced security, no audit logs, no SLA, node limits (e.g., max 3 nodes).
-- **Goal:** Market penetration and trust building.
-
-### 3.2. The "Paid" Tier (Enterprise Edition)
-
-- **Target:** Mid-Market, Enterprise, Regulated Industries (Banking, Health, Gov).
-- **Key Monetized Features:**
-  - **Compliance Module:** Automated GDPR audit reports, "Right to be Forgotten" automation, EU-residency enforcement.
-  - **Advanced Security:** SSO/SAML, Granular RBAC, Immutable audit logs.
-  - **High Availability:** Automated failover, multi-region replication.
-  - **Support:** 24/7 SLA, dedicated success manager.
-- **Revenue Model:** Per-node subscription or Flat Annual License.
-
-### 3.3. Service Layer (Managed Services)
-
-- **Offering:** "We run it for you."
-- **Value:** Eliminates the need for the client to hire DevOps engineers.
-- **Pricing:** Monthly retainer based on usage (GB, Nodes).
-
----
-
-## 4. Conclusion
+## 3. Conclusion
 
 This platform addresses a critical market need: **Sovereign, Compliant, and Cost-Effective Data Infrastructure.** By combining a robust open-source stack with an Open Core business model and leveraging the founder's deep industry experience, the project is positioned for sustainable long-term growth without the need for massive upfront capital. The key to success is **discipline in quality control** and **focusing on the "Compliance" value proposition.**
 
