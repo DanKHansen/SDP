@@ -40,7 +40,7 @@ The business model is **Open Core**: providing a free, fully functional Communit
 
 ### 2.3. Immutable & Functional Implementation
 
-- **Infrastructure:** Defined via **Terraform** or **Pulumi**. No server updates; new versions replace old ones.
+- **Infrastructure:** Defined via **OpenTofu** (Linux Foundation fork for true vendor neutrality) or Pulumi. No server updates; new versions replace old ones.
 - **Pipelines:** Defined as **Pure Functions** (e.g., `filter -> map -> reduce`). Input A always yields Output C.
 - **GitOps:** **ArgoCD** monitors Git repositories. Any change triggers an automatic, verified deployment.
 - **Compliance:** Every change is a Git commit, creating an immutable audit trail for regulators.
@@ -55,4 +55,8 @@ This document outlines the architectural blueprint and business strategy. I am c
 My immediate focus is on establishing the core stack (K3s, OpenTofu, MinIO, Iceberg) and defining the initial "Compliance Module" for enterprise adoption. 
 
 This platform addresses a critical market need: **Sovereign, Compliant, and Cost-Effective Data Infrastructure.** By combining a robust open-source stack with an Open Core business model and leveraging the founder's deep industry experience, the project is positioned for sustainable long-term growth without the need for massive upfront capital. The key to success is **discipline in quality control** and **focusing on the "Compliance" value proposition.**
+
+### Access the Project
+🔗 **GitHub Repository:** [(https://github.com/DanKHansen/SDP)]  
+*(Under active development - contributions and feedback welcome)*
 
