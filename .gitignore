@@ -1,34 +1,37 @@
 # ==========================================
 # 1. OpenTofu / Terraform State (CRITICAL)
 # ==========================================
-# State files contain secrets and resource IDs
 *.tfstate
 *.tfstate.*
 *.tfstate.backup
-# DO NOT commit .terraform/ (Terraform) or .tofu/ (OpenTofu)
-.terraform/
 .tofu/
+.terraform/
 .tfplan
 .tfplan.*
 
 # ==========================================
-# 2. Secrets & Credentials
+# 2. Secrets & Credentials (FIXED PATHS)
 # ==========================================
-secrets/
+# CRITICAL: Ignore specific OpenBao secrets directory (was missing!)
+security/openbao-secrets/
+
+# Generic secret patterns (safe defaults)
 *.pem
 *.key
 *.p12
 *.pfx
 *.crt
+env/.env
 .env
 .env.local
 .env.production
 credentials.json
+secret.yaml
 
 # ==========================================
-# 3. Python & Data Tools (dbt, Great Expectations)
+# 3. Python, dbt & Data Tools (PATH ADJUSTED)
 # ==========================================
-# Python cache and virtual environments
+# Python cache
 __pycache__/
 *.py[cod]
 *$py.class
@@ -39,16 +42,15 @@ dist/
 venv/
 env/
 .venv/
-.venv/
 
-# dbt specific
-dbt/logs/
-dbt/target/
-dbt/dbt_packages/
+# dbt - Updated to match your 'data-platform/transformation/dbt-projects' structure
+data-platform/transformation/dbt-projects/logs/
+data-platform/transformation/dbt-projects/target/
+data-platform/transformation/dbt-projects/dbt_packages/
 
-# Great Expectations (generated docs)
-great_expectations/uncommitted/
-great_expectations/plugins/
+# Great Expectations - Updated to match 'data-platform/data-quality/great-expectations'
+data-platform/data-quality/great-expectations/uncommitted/
+data-platform/data-quality/great-expectations/plugins/
 
 # NiFi Local State (Large files)
 nifi/nifi-logs/
@@ -57,16 +59,15 @@ nifi/version_repository/
 nifi/content_repository/
 nifi/provenance_repository/
 nifi/state/
+data-platform/ingestion/nifi-flows/*.log # Optional: if logs end up in flow files
 
 # ==========================================
 # 4. Kubernetes & Helm
 # ==========================================
-# Kube config (sikkerhed!)
-kubeconfig.yaml
 .kube/
-# Helm artifacts
 helm-debug/
 Chart.lock
+# Do not ignore Chart.yaml or values.yaml! Only generated artifacts.
 
 # ==========================================
 # 5. IDE & OS
@@ -77,6 +78,7 @@ Chart.lock
 *.swo
 .DS_Store
 Thumbs.db
+*.sublime-*
 
 # ==========================================
 # 6. Logs & Temp
@@ -91,10 +93,6 @@ tmp/
 # 7. Build & CI
 # ==========================================
 node_modules/
-dist/
-build/
-*.o
-*.class
 coverage/
 .nyc_output/
 .jest/
@@ -105,3 +103,4 @@ coverage/
 docker-compose.override.yml
 docker-compose.local.yml
 local-dev/.env
+local-dev/kind-cluster/.kubeconfig
