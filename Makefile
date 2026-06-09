@@ -9,7 +9,7 @@ tofu-validate:
     tofu validate
     
 security-scan:
-    trivy fs --secuority-checks vuln,config .
+    trivy fs --security-checks vuln,config .
     opa eval -d security/opa-policies/ "data.main.deny' --input
 pipelines/nifi-flows/
 
