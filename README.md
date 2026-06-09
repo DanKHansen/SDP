@@ -1,62 +1,63 @@
-# SDP
-Sovereign Data Platform:  Cloud agnostic, EU-first, Opensource based
+# Sovereign Data Platform (SDP)
 
-**Date:** June 8, 2026  
-**Founder Profile:** Solo Founder (60+), Enterprise Veteran  
-**Goal:** Build a sustainable, recurring-revenue business (Open Core) for BI, ML, and AI.
+**Cloud Agnostic | EU-First Compliance | 100% Open Source**
+
+> **Status:** 🚧 Build-in-Progress | **Phase:** Core Infrastructure Setup  
+> **Founder:** Dan Kjeldstrøm Hansen (Enterprise Data Architect)
 
 ---
 
 ## 1. Executive Summary
 
-This document outlines the architecture, business model, and implementation strategy for a sovereign data platform designed for the European market. The platform prioritizes **GDPR compliance**, **data residency**, and **vendor neutrality** (cloud-agnostic) using a **100% open-source stack**.
+The SDP is a reference architecture for building **GDPR-compliant**, **cloud-agnostic**, and **fully sovereign** data platforms. Designed to eliminate vendor lock-in while providing robustness for enterprise-grade BI, ML, and AI workloads.
 
-The business model is **Open Core**: providing a free, fully functional Community Edition to drive adoption, while monetizing **Enterprise Features** (Security, Compliance, Automation, Support) and **Managed Services**.
+**Business Model:** Open Core — Free Community Edition for adoption; Enterprise Features (Advanced Security, Managed Services) for revenue.
 
 ---
 
 ## 2. Technical Architecture
 
-### 2.1. Core Principles
+### 2.1 Core Principles
+- **Cloud Agnostic:** Runs on K3s, Standard K8s, Bare Metal, or EU-region Cloud.
+- **EU-First Sovereignty:** Strict data residency enforcement; keys managed via self-hosted **OpenBao**.
+- **Immutable Infrastructure:** Everything defined in **OpenTofu**; no manual server changes.
+- **Functional Pipelines:** Pure functions (Input A → Output B) ensuring reproducibility.
 
-- **Cloud Agnostic:** Runs on any infrastructure (Kubernetes, Bare Metal, AWS/Azure/GCP EU regions).
-- **EU-First Sovereignty:** Data never leaves EU borders; strict enforcement of residency.
-- **Immutable Infrastructure:** No manual changes; everything is defined in code (GitOps).
-- **Functional Design:** Data pipelines use pure functions to ensure reproducibility and auditability.
+### 2.2 Technology Stack
 
-### 2.2. The Technology Stack
+| Layer              | Technology                      | Role                                                |
+|:------------------ |:------------------------------- |:--------------------------------------------------- |
+| **Orchestration**  | Kubernetes (K3s / K8s)          | Container runtime & scheduling                      |
+| **Storage**        | MinIO + Apache Iceberg          | S3-compatible object storage with ACID transactions |
+| **Ingestion**      | **Apache NiFi** (+ Airbyte)     | Data logistics, routing, PII masking                |
+| **Streaming**      | Redpanda / Kafka                | Real-time event processing                          |
+| **Compute**        | Apache Spark / Trino            | Batch processing & Federated SQL                    |
+| **Transformation** | dbt Core                        | SQL-based modeling & testing                        |
+| **BI**             | Apache Superset                 | Visualization & Dashboards                          |
+| **ML/AI**          | MLflow + Qdrant/Weaviate        | Model lifecycle & Vector DB for RAG                 |
+| **Security**       | Keycloak + **OpenBao**          | IAM & Secrets Management (Vault Fork)               |
+| **GitOps**         | ArgoCD                          | Declarative deployment sync                         |
 
-| Layer              | Technology                 | Role                                                 |
-|:------------------ |:-------------------------- |:---------------------------------------------------- |
-| **Orchestration**  | Kubernetes (K3s / K8s)     | Container management.                                |
-| **Storage**        | MinIO + Iceberg/Delta Lake | S3-compatible object storage with ACID transactions. |
-| **Ingestion**      | Airbyte / Meltano          | Open-source ELT connectors.                          |
-| **Streaming**      | Redpanda / Kafka           | Real-time event processing.                          |
-| **Compute**        | Apache Spark / Trino       | Batch and interactive SQL processing.                |
-| **Transformation** | dbt (Core)                 | SQL-based data modeling.                             |
-| **BI**             | Apache Superset / Metabase | Visualization and dashboards.                        |
-| **ML/AI**          | MLflow + Qdrant/Weaviate   | Model lifecycle and Vector DB for RAG.               |
-| **Security**       | Keycloak + Vault           | Identity and Secrets management.                     |
-
-### 2.3. Immutable & Functional Implementation
-
-- **Infrastructure:** Defined via **OpenTofu** (Linux Foundation fork for true vendor neutrality) or Pulumi. No server updates; new versions replace old ones.
-- **Pipelines:** Defined as **Pure Functions** (e.g., `filter -> map -> reduce`). Input A always yields Output C.
-- **GitOps:** **ArgoCD** monitors Git repositories. Any change triggers an automatic, verified deployment.
-- **Compliance:** Every change is a Git commit, creating an immutable audit trail for regulators.
+### 2.3 Implementation Strategy
+- **Infrastructure as Code:** Defined via **OpenTofu**.
+- **Data Quality:** Embedded gates using Great Expectations & Soda Core.
+- **Lineage:** Automated tracking via OpenLineage standards.
 
 ---
 
-## 3. Conclusion
+## 3. Roadmap & Next Steps
 
-### Current Status & Next Steps
-This document outlines the architectural blueprint and business strategy. I am currently implementing this platform hands-on as a public "build-in-progress" project to validate the design and demonstrate the value of sovereign, open-source data infrastructure. 
+1.  ✅ **Phase 1:** Architecture Definition & Documentation (Current)
+2.  ⏳ **Phase 2:** Bootstrap K3s Cluster & Core Services (MinIO, Keycloak, OpenBao)
+3.  ⏳ **Phase 3:** Implement Ingestion Pipeline (NiFi → MinIO)
+4.  ⏳ **Phase 4:** Add Compute Layer (Trino/Spark) & BI (Superset)
+5.  ⏳ **Phase 5:** Hardening & Compliance Module Validation
 
-My immediate focus is on establishing the core stack (K3s, OpenTofu, MinIO, Iceberg) and defining the initial "Compliance Module" for enterprise adoption. 
+---
 
-This platform addresses a critical market need: **Sovereign, Compliant, and Cost-Effective Data Infrastructure.** By combining a robust open-source stack with an Open Core business model and leveraging the founder's deep industry experience, the project is positioned for sustainable long-term growth without the need for massive upfront capital. The key to success is **discipline in quality control** and **focusing on the "Compliance" value proposition.**
+## 4. Access & Contribution
 
-### Access the Project
-🔗 **GitHub Repository:** [(https://github.com/DanKHansen/SDP)]  
-*(Under active development - contributions and feedback welcome)*
+📖 **[Architecture Overview](docs/architecture/architecture-overview.md)**  
+🌐 **GitHub Repository:** [https://github.com/DanKHansen/SDP](https://github.com/DanKHansen/SDP)  
 
+*Under active development. Contributions and feedback welcome!*
