@@ -1,17 +1,16 @@
 # Makefile
-.PHONY: local-up tofu-validate security-scan
+.PHONY: local-up tofu-validate security-scan clean
 
 local-up:
-    docker-compose up -d
-    
+	docker-compose up -d
+
 tofu-validate:
-    tofu fmt
-    tofu validate
-    
+	tofu fmt
+	tofu validate
+
 security-scan:
-    trivy fs --security-checks vuln,config .
-    opa eval -d security/opa-policies/ "data.main.deny' --input
-pipelines/nifi-flows/
+	trivy fs --security-checks vuln,config .
+	opa eval -d security/opa-policies/ "data.main.deny" --input pipelines/nifi-flows/
 
 clean:
-    docker-compose down
+	docker-compose down
