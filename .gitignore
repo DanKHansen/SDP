@@ -1,35 +1,107 @@
-# .gitignore
+# ==========================================
+# 1. OpenTofu / Terraform State (CRITICAL)
+# ==========================================
+# State files contain secrets and resource IDs
 *.tfstate
-*tfstate.backup
-./terraform/
-secrets/
-node_modules/
-dist/
-build/
-*.log
-*.tmp
+*.tfstate.*
+*.tfstate.backup
+# DO NOT commit .terraform/ (Terraform) or .tofu/ (OpenTofu)
+.terraform/
+.tofu/
+.tfplan
+.tfplan.*
 
-# IDE and OS files
+# ==========================================
+# 2. Secrets & Credentials
+# ==========================================
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+.env
+.env.local
+.env.production
+credentials.json
+
+# ==========================================
+# 3. Python & Data Tools (dbt, Great Expectations)
+# ==========================================
+# Python cache and virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+build/
+dist/
+*.egg-info/
+.eggs/
+venv/
+env/
+.venv/
+.venv/
+
+# dbt specific
+dbt/logs/
+dbt/target/
+dbt/dbt_packages/
+
+# Great Expectations (generated docs)
+great_expectations/uncommitted/
+great_expectations/plugins/
+
+# NiFi Local State (Large files)
+nifi/nifi-logs/
+nifi/database_repository/
+nifi/version_repository/
+nifi/content_repository/
+nifi/provenance_repository/
+nifi/state/
+
+# ==========================================
+# 4. Kubernetes & Helm
+# ==========================================
+# Kube config (sikkerhed!)
+kubeconfig.yaml
+.kube/
+# Helm artifacts
+helm-debug/
+Chart.lock
+
+# ==========================================
+# 5. IDE & OS
+# ==========================================
 .vscode/
 .idea/
 *.swp
+*.swo
 .DS_Store
 Thumbs.db
 
-# Local environment variables
-.env
-.env.local
-
-# Logs
+# ==========================================
+# 6. Logs & Temp
+# ==========================================
 *.log
 logs/
+tmp/
+*.tmp
+*.bak
 
-# Build artifacts
+# ==========================================
+# 7. Build & CI
+# ==========================================
+node_modules/
 dist/
 build/
 *.o
 *.class
+coverage/
+.nyc_output/
+.jest/
 
-# Kube config (sikkerhed!)
-kubeconfig.yaml
-.kube/
+# ==========================================
+# 8. Local Dev Overrides
+# ==========================================
+docker-compose.override.yml
+docker-compose.local.yml
+local-dev/.env
