@@ -10,8 +10,10 @@ resource "hcloud_server" "master" {
   image         = var.image
   server_type   = var.server_type
   location      = var.location
-  network_ids   = [var.network_id]
-  ssh_key_ids   = [var.ssh_key_id]
+  network {
+    network_id  = var.network_id
+  }
+  ssh_keys      = [var.ssh_key_id]
   firewall_ids  = [var.firewall_id]
 
   # User Data: Minimal bootstrap. K3s install via Ansible post-provision.
@@ -28,8 +30,10 @@ resource "hcloud_server" "worker" {
   image         = var.image
   server_type   = var.server_type
   location      = var.location
-  network_ids   = [var.network_id]
-  ssh_key_ids   = [var.ssh_key_id]
+  network {
+    network_id  = var.network_id
+  }
+  ssh_keys      = [var.ssh_key_id]
   firewall_ids  = [var.firewall_id]
 
   user_data = <<-EOT

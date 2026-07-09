@@ -2,7 +2,7 @@ terraform {
   required_providers {
     hcloud = {
       source  = "hetznercloud/hcloud"
-      version = "~> 1.44"
+      version = "~> 1.66.0"
     }
   }
 }
@@ -15,7 +15,6 @@ variable "admin_ip"     { type = string }
 resource "hcloud_network" "sdp_net" {
   name     = "sdp-net"
   ip_range = var.network_cidr
-  location = var.location
 }
 
 resource "hcloud_network_subnet" "sdp_subnet" {
@@ -61,11 +60,11 @@ resource "hcloud_firewall" "sdp_fw" {
   }
   
   # Allow all outbound (default in hcloud is allow all, but explicit is better)
-  rule {
-    direction  = "out"
-    protocol   = "all"
-    description = "Allow Outbound"
-  }
+  # rule {
+  #   direction  = "out"
+  #   protocol   = "all"
+  #   description = "Allow Outbound"
+  # }
 }
 
 output "network_id" { value = hcloud_network.sdp_net.id }
