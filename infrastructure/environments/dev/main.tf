@@ -7,11 +7,12 @@ terraform {
   }
 }
 
+# Using environment variable HCLOUD_TOKEN instead
 provider "hcloud" {
-  token = var.hcloud_token
+#   token = var.hcloud_token
 }
 
-variable "hcloud_token" { type = string }
+# variable "hcloud_token" { type = string }
 variable "location"     { type = string }
 variable "network_cidr" { type = string }
 variable "ssh_key_id"   { type = string }
