@@ -2,6 +2,7 @@
 packages:
   - curl
   - iptables
+  - netcat-openbsd
 
 write_files:
   - path: /etc/k3s/token

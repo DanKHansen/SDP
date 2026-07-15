@@ -4,7 +4,7 @@ variable "location" {
 }
 
 variable "network_id" {
-  description = "ID of the private network to attach servers to"
+  description = "ID of the private network"
   type        = string
 }
 

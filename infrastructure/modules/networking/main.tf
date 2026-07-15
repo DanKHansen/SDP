@@ -1,28 +1,19 @@
-terraform {
-  required_providers {
-    hcloud = {
-      source  = "hetznercloud/hcloud"
-      version = "~> 1.66.0"
-    }
-  }
-}
-
 resource "hcloud_network" "sdp_net" {
-  name     = "sdp-net"
+  name     = "sdp-dev-net"
   ip_range = var.network_cidr
 }
 
 resource "hcloud_network_subnet" "sdp_subnet" {
   network_id   = hcloud_network.sdp_net.id
-  type         = "cloud"
-  network_zone = "eu-central"
   ip_range     = cidrsubnet(var.network_cidr, 8, 0)
+  network_zone = "eu-central"
+  type         = "cloud"
 }
 
 resource "hcloud_firewall" "sdp_fw" {
   name = "sdp-dev-fw"
 
-  # Allow SSH from your admin IP
+  # SSH from admin IP only
   rule {
     direction  = "in"
     protocol   = "tcp"
@@ -30,7 +21,7 @@ resource "hcloud_firewall" "sdp_fw" {
     source_ips = [var.admin_ip]
   }
 
-  # Allow TCP traffic within the private network (K3s API, etcd, flannel, etc.)
+  # All TCP within private network
   rule {
     direction  = "in"
     protocol   = "tcp"
@@ -38,7 +29,7 @@ resource "hcloud_firewall" "sdp_fw" {
     source_ips = [var.network_cidr]
   }
 
-  # Allow UDP traffic within the private network (DNS, Flannel VXLAN)
+  # All UDP within private network
   rule {
     direction  = "in"
     protocol   = "udp"
@@ -46,35 +37,49 @@ resource "hcloud_firewall" "sdp_fw" {
     source_ips = [var.network_cidr]
   }
 
-  # Allow ICMP (Ping) within the private network
+  # ICMP within private network
   rule {
     direction  = "in"
     protocol   = "icmp"
     source_ips = [var.network_cidr]
   }
 
-  # Allow all outbound traffic
+  # K3s API from anywhere (lab only, tighten for production)
   rule {
-    direction  = "out"
+    direction  = "in"
     protocol   = "tcp"
-    port       = "1-65535"
+    port       = "6443"
+    source_ips = ["0.0.0.0/0"]
+  }
+
+  # All outbound TCP
+  rule {
+    direction       = "out"
+    protocol        = "tcp"
+    port            = "1-65535"
     destination_ips = ["0.0.0.0/0"]
   }
 
+  # All outbound UDP
   rule {
-    direction  = "out"
-    protocol   = "udp"
-    port       = "1-65535"
+    direction       = "out"
+    protocol        = "udp"
+    port            = "1-65535"
     destination_ips = ["0.0.0.0/0"]
   }
 
+  # All outbound ICMP
   rule {
-    direction  = "out"
-    protocol   = "icmp"
+    direction       = "out"
+    protocol        = "icmp"
     destination_ips = ["0.0.0.0/0"]
   }
 }
 
-output "network_id" { value = hcloud_network.sdp_net.id }
-output "firewall_id" { value = hcloud_firewall.sdp_fw.id }
-output "subnet_id" { value = hcloud_network_subnet.sdp_subnet.id }
+output "network_id" {
+  value = hcloud_network.sdp_net.id
+}
+
+output "firewall_id" {
+  value = hcloud_firewall.sdp_fw.id
+}
