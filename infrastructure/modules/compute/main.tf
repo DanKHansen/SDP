@@ -8,8 +8,10 @@ resource "hcloud_server" "nodes" {
   ssh_keys      = [var.ssh_key_id]
   firewall_ids  = [var.firewall_id]
 
-  # CRITICAL: Attach to private network for DNS resolution
-  network_ids   = [var.network_id]
+  # CORRECTED: Use nested 'network' block instead of 'network_ids' argument
+  network {
+    network_id = var.network_id
+  }
 
   user_data = templatefile("${path.module}/cloud-init.tpl", {
     k3s_token       = var.k3s_token
@@ -22,11 +24,6 @@ resource "hcloud_server" "nodes" {
 output "server_ips" {
   description = "Public IPv4 addresses of all nodes"
   value       = hcloud_server.nodes[*].ipv4_address
-}
-
-output "server_private_ips" {
-  description = "Private IPv4 addresses of all nodes"
-  value       = hcloud_server.nodes[*].private_net[0].ip
 }
 
 output "server_ids" {

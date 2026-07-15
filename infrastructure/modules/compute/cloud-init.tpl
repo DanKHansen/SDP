@@ -61,7 +61,7 @@ runcmd:
       echo "Master found at $MASTER_IP"
 
       export INSTALL_K3S_VERSION="${k3s_version}"
-      K3S_URL="https://${MASTER_IP}:6443"
+      K3S_URL="https://$MASTER_IP:6443"
       K3S_TOKEN=$(cat /etc/k3s/token)
 
       curl -sfL ${k3s_install_url} | sh -s - agent \

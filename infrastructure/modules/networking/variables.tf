@@ -8,12 +8,8 @@ variable "network_cidr" {
   type        = string
 }
 
-variable "ssh_key_id" {
-  description = "ID of the SSH key (used for reference, though not directly applied here)"
-  type        = string
-}
-
 variable "admin_ip" {
   description = "IP address allowed to access SSH"
   type        = string
 }
+# Note: ssh_key_id removed as it is not used in the networking module

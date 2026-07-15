@@ -7,11 +7,6 @@ terraform {
   }
 }
 
-variable "location"     { type = string }
-variable "network_cidr" { type = string }
-variable "ssh_key_id"   { type = string }
-variable "admin_ip"     { type = string }
-
 resource "hcloud_network" "sdp_net" {
   name     = "sdp-net"
   ip_range = var.network_cidr

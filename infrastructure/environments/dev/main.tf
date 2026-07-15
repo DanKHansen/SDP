@@ -50,7 +50,3 @@ module "compute" {
 output "server_public_ips" {
   value = module.compute.server_ips
 }
-
-output "server_private_ips" {
-  value = module.compute.server_private_ips
-}
