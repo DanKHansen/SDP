@@ -1,47 +1,35 @@
-variable "location"    { type = string }
-variable "network_id"  { type = string }
-variable "firewall_id" { type = string }
-variable "ssh_key_id"  { type = string }
-variable "server_type" { type = string }
-variable "image"       { type = string }
+resource "hcloud_server" "nodes" {
+  count       = var.node_count
+  name        = "sdp-node-${count.index}"
+  server_type = var.server_type
+  image       = var.image_id
+  location    = var.location
 
-resource "hcloud_server" "master" {
-  name          = "sdp-master-01"
-  image         = var.image
-  server_type   = var.server_type
-  location      = var.location
-  network {
-    network_id  = var.network_id
-  }
   ssh_keys      = [var.ssh_key_id]
   firewall_ids  = [var.firewall_id]
 
-  # User Data: Minimal bootstrap. K3s install via Ansible post-provision.
-  user_data = <<-EOT
-    #!/bin/bash
-    # Disable SSH if strictly private (optional)
-    # systemctl stop sshd || true
-  EOT
+  # CRITICAL: Attach to private network for DNS resolution
+  network_ids   = [var.network_id]
+
+  user_data = templatefile("${path.module}/cloud-init.tpl", {
+    k3s_token       = var.k3s_token
+    node_index      = count.index
+    k3s_install_url = "https://get.k3s.io"
+    k3s_version     = var.k3s_version
+  })
 }
 
-resource "hcloud_server" "worker" {
-  count         = 2
-  name          = "sdp-worker-${count.index + 1}"
-  image         = var.image
-  server_type   = var.server_type
-  location      = var.location
-  network {
-    network_id  = var.network_id
-  }
-  ssh_keys      = [var.ssh_key_id]
-  firewall_ids  = [var.firewall_id]
-
-  user_data = <<-EOT
-    #!/bin/bash
-    # systemctl stop sshd || true
-  EOT
+output "server_ips" {
+  description = "Public IPv4 addresses of all nodes"
+  value       = hcloud_server.nodes[*].ipv4_address
 }
 
-output "master_ip" { value = hcloud_server.master.ipv4_address }
-output "worker_ips" { value = hcloud_server.worker[*].ipv4_address }
-output "master_id" { value = hcloud_server.master.id }
+output "server_private_ips" {
+  description = "Private IPv4 addresses of all nodes"
+  value       = hcloud_server.nodes[*].private_net[0].ip
+}
+
+output "server_ids" {
+  description = "IDs of all nodes"
+  value       = hcloud_server.nodes[*].id
+}

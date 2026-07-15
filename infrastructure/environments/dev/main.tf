@@ -7,41 +7,50 @@ terraform {
   }
 }
 
-# Using environment variable HCLOUD_TOKEN instead
 provider "hcloud" {
-#   token = var.hcloud_token
+  # Token is read from HCLOUD_TOKEN environment variable
 }
 
-# variable "hcloud_token" { type = string }
+# Input Variables (matches dev.tfvars)
 variable "location"     { type = string }
 variable "network_cidr" { type = string }
 variable "ssh_key_id"   { type = string }
 variable "admin_ip"     { type = string }
 variable "server_type"  { type = string }
 variable "image"        { type = string }
+variable "node_count"   { type = number }
+variable "k3s_version"  { type = string }
+variable "k3s_token"    { type = string }
 
-# Call the Networking Module
+# 1. Create Network & Firewall
 module "networking" {
   source = "../../modules/networking"
 
-  location      = var.location
-  network_cidr  = var.network_cidr
-  ssh_key_id    = var.ssh_key_id
-  admin_ip      = var.admin_ip
+  location     = var.location
+  network_cidr = var.network_cidr
+  admin_ip     = var.admin_ip
 }
 
-# Call the Compute Module
+# 2. Create Compute Nodes
 module "compute" {
   source = "../../modules/compute"
 
-  location      = var.location
-  network_id    = module.networking.network_id
-  firewall_id   = module.networking.firewall_id
-  ssh_key_id    = var.ssh_key_id
-  server_type   = var.server_type
-  image         = var.image
+  location    = var.location
+  network_id  = module.networking.network_id
+  firewall_id = module.networking.firewall_id
+  ssh_key_id  = var.ssh_key_id
+  server_type = var.server_type
+  image_id    = var.image
+  node_count  = var.node_count
+  k3s_token   = var.k3s_token
+  k3s_version = var.k3s_version
 }
 
 # Outputs
-output "master_ip" { value = module.compute.master_ip }
-output "worker_ips" { value = module.compute.worker_ips }
+output "server_public_ips" {
+  value = module.compute.server_ips
+}
+
+output "server_private_ips" {
+  value = module.compute.server_private_ips
+}
