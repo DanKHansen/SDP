@@ -116,5 +116,5 @@ local-dev/kind-cluster/.kubeconfig
 
 # Ignore generated plan files (already covered by .tfplan but explicit is better)
 *tfplan
-/infrastructure/environments/dev/.env
+/.env
 
