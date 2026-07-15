@@ -20,46 +20,59 @@ resource "hcloud_network_subnet" "sdp_subnet" {
 }
 
 resource "hcloud_firewall" "sdp_fw" {
-  name = "sdp-fw"
+  name = "sdp-dev-fw"
 
-  # SSH (Admin only)
+  # Allow SSH from your admin IP
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "22"
     source_ips = [var.admin_ip]
-    description = "SSH Admin"
   }
 
-  # K3s Control Plane
+  # Allow TCP traffic within the private network (K3s API, etcd, flannel, etc.)
   rule {
     direction  = "in"
     protocol   = "tcp"
-    port       = "6443"
+    port       = "1-65535"
     source_ips = [var.network_cidr]
-    description = "K3s API"
   }
+
+  # Allow UDP traffic within the private network (DNS, Flannel VXLAN)
   rule {
     direction  = "in"
-    protocol   = "tcp"
-    port       = "2379-2380"
+    protocol   = "udp"
+    port       = "1-65535"
     source_ips = [var.network_cidr]
-    description = "Etcd"
   }
+
+  # Allow ICMP (Ping) within the private network
   rule {
     direction  = "in"
-    protocol   = "tcp"
-    port       = "10250-10252"
+    protocol   = "icmp"
     source_ips = [var.network_cidr]
-    description = "Kubelet"
   }
-  
-  # Allow all outbound (default in hcloud is allow all, but explicit is better)
-  # rule {
-  #   direction  = "out"
-  #   protocol   = "all"
-  #   description = "Allow Outbound"
-  # }
+
+  # Allow all outbound traffic
+  rule {
+    direction  = "out"
+    protocol   = "tcp"
+    port       = "1-65535"
+    destination_ips = ["0.0.0.0/0"]
+  }
+
+  rule {
+    direction  = "out"
+    protocol   = "udp"
+    port       = "1-65535"
+    destination_ips = ["0.0.0.0/0"]
+  }
+
+  rule {
+    direction  = "out"
+    protocol   = "icmp"
+    destination_ips = ["0.0.0.0/0"]
+  }
 }
 
 output "network_id" { value = hcloud_network.sdp_net.id }
