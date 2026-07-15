@@ -6,22 +6,17 @@
 *.tfstate.backup
 .tofu/
 .terraform/
-.tfplan
-.tfplan.*
+*tfplan
 
 # ==========================================
 # 2. Secrets & Credentials (FIXED PATHS)
 # ==========================================
-# CRITICAL: Ignore specific OpenBao secrets directory (was missing!)
 security/openbao-secrets/
-
-# Generic secret patterns (safe defaults)
 *.pem
 *.key
 *.p12
 *.pfx
 *.crt
-env/.env
 .env
 .env.local
 .env.production
@@ -108,13 +103,6 @@ local-dev/kind-cluster/.kubeconfig
 # ==========================================
 # 9. Local Infrastructure Config (CRITICAL)
 # ==========================================
-# Ignore all .tfvars files (contains tokens, IPs, SSH IDs)
-# You MUST manually un-ignore template files if you have them (e.g., *.tfvars.tmpl)
 *.tfvars
 !*.tfvars.example
 !*.tfvars.template
-
-# Ignore generated plan files (already covered by .tfplan but explicit is better)
-*tfplan
-/.env
-
