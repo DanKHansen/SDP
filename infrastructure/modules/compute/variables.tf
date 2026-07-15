@@ -19,18 +19,13 @@ variable "ssh_key_id" {
 }
 
 variable "server_type" {
-  description = "Hetzner server type (e.g., cx53)"
+  description = "Hetzner server type (e.g., cax11)"
   type        = string
 }
 
 variable "image_id" {
   description = "Operating system image name or ID (e.g., ubuntu-24.04)"
   type        = string
-}
-
-variable "node_count" {
-  description = "Number of nodes to create"
-  type        = number
 }
 
 variable "k3s_token" {

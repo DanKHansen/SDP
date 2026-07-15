@@ -41,12 +41,10 @@ module "compute" {
   ssh_key_id  = var.ssh_key_id
   server_type = var.server_type
   image_id    = var.image
-  node_count  = var.node_count
   k3s_token   = var.k3s_token
   k3s_version = var.k3s_version
 }
 
-# Outputs
 output "server_public_ips" {
-  value = module.compute.server_ips
+  value = concat([module.compute.master_public_ip], module.compute.worker_public_ips)
 }
