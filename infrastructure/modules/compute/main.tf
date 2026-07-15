@@ -38,7 +38,6 @@ resource "hcloud_server" "worker" {
     network_id = var.network_id
   }
 
-  # Use PUBLIC IP for join (allowed by firewall rule 6443 from 0.0.0.0/0)
   user_data = templatefile("${path.module}/cloud-init-worker.tpl", {
     k3s_token       = var.k3s_token
     k3s_install_url = "https://get.k3s.io"
@@ -54,12 +53,4 @@ output "master_public_ip" {
 
 output "worker_public_ips" {
   value = hcloud_server.worker[*].ipv4_address
-}
-
-output "master_private_ip" {
-  value = hcloud_server.master.private_net[0].ip
-}
-
-output "worker_private_ips" {
-  value = hcloud_server.worker[*].private_net[0].ip
 }
