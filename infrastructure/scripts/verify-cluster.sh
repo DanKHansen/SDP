@@ -13,7 +13,7 @@ echo -e "${YELLOW}🚀 Starting SDP Cluster Verification...${NC}"
 # 1. Get the Master IP
 if [ -z "$MASTER_IP" ]; then
     echo "Detecting Master IP..."
-    read -p "Enter Master Public IP (from tofu apply output): " MASTER_IP
+    read -rp "Enter Master Public IP (from tofu apply output): " MASTER_IP
 fi
 
 # Clear stale SSH keys for this IP
@@ -23,7 +23,7 @@ echo "Targeting Master: $MASTER_IP"
 
 # Helper function for SSH
 ssh_cmd() {
-    ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@$MASTER_IP "$1"
+    ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@"$MASTER_IP" "$1"
 }
 
 # 2. Wait for K3s to be ready (kubectl accessible)
@@ -34,7 +34,7 @@ while ! ssh_cmd "kubectl get nodes >/dev/null 2>&1"; do
     echo -n "."
     sleep 5
     COUNT=$((COUNT+5))
-    if [ $COUNT -ge $MAX_WAIT ]; then
+    if [ "$COUNT" -ge "$MAX_WAIT" ]; then
         echo -e "\n${RED}❌ Timeout waiting for K3s cluster.${NC}"
         exit 1
     fi
@@ -52,7 +52,7 @@ echo -e "${GREEN}✅ All nodes are Ready.${NC}"
 # 4. Verify Hetzner CCM (With Retry Loop)
 echo -e "${YELLOW}⏳ Checking Hetzner Cloud Controller Manager...${NC}"
 CCM_READY=false
-for i in $(seq 1 60); do
+for _ in $(seq 1 60); do
     # Check if deployment exists AND has available replicas
     STATUS=$(ssh_cmd "kubectl get deployment hcloud-cloud-controller-manager -n kube-system -o jsonpath='{.status.availableReplicas}' 2>/dev/null" || echo "")
     if [ "$STATUS" == "1" ]; then
@@ -74,7 +74,7 @@ fi
 # 5. Verify ArgoCD (With Retry Loop)
 echo -e "${YELLOW}⏳ Checking ArgoCD Server...${NC}"
 ARGOCD_READY=false
-for i in $(seq 1 60); do
+for _ in $(seq 1 60); do
     # Check if deployment exists AND has available replicas
     STATUS=$(ssh_cmd "kubectl get deployment argocd-server -n argocd -o jsonpath='{.status.availableReplicas}' 2>/dev/null" || echo "")
     if [ "$STATUS" == "1" ]; then
@@ -108,4 +108,4 @@ echo ""
 echo "Hetzner CCM Status:"
 ssh_cmd "kubectl get pods -n kube-system -l app=hcloud-cloud-controller-manager"
 echo ""
-echo -e "${YELLOW}💡 Tip: Run 'ssh root@$MASTER_IP' to access the cluster.${NC}"
+echo -e "${YELLOW}💡 Tip: Run 'ssh root@${MASTER_IP}' to access the cluster.${NC}"
