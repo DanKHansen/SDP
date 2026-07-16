@@ -53,47 +53,46 @@ write_files:
             node-role.kubernetes.io/master: "true"
 
   # 4. Create ArgoCD Namespace (Prerequisite for HelmChart)
-    - path: /var/lib/rancher/k3s/server/manifests/01-argocd-namespace.yaml
-      permissions: "0644"
-      content: |
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: argocd
-          labels:
-            pod-security.kubernetes.io/enforce: restricted
+  - path: /var/lib/rancher/k3s/server/manifests/01-argocd-namespace.yaml
+    permissions: "0644"
+    content: |
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: argocd
+        labels:
+          pod-security.kubernetes.io/enforce: restricted
 
-    # 5. Write the ArgoCD HelmChart manifest
-    - path: /var/lib/rancher/k3s/server/manifests/02-argocd.yaml
-      permissions: "0644"
-      content: |
-        apiVersion: helm.cattle.io/v1
-        kind: HelmChart
-        metadata:
-          name: argocd
-          namespace: kube-system
-        spec:
-          repo: https://argoproj.github.io/argo-helm
-          chart: argo-cd
-          version: "10.1.3"
-          targetNamespace: argocd
-          # No need for createNamespace: true anymore
-          valuesContent: |
-            global:
-              domain: argocd.sdp.local
-            server:
-              service:
-                type: LoadBalancer
-              args:
-                - --insecure
-            redis:
-              disabled: false
-            controller:
-              replicas: 1
-            repoServer:
-              replicas: 1
-            applicationSet:
-              replicas: 1
+  # 5. Write the ArgoCD HelmChart manifest
+  - path: /var/lib/rancher/k3s/server/manifests/02-argocd.yaml
+    permissions: "0644"
+    content: |
+      apiVersion: helm.cattle.io/v1
+      kind: HelmChart
+      metadata:
+        name: argocd
+        namespace: kube-system
+      spec:
+        repo: https://argoproj.github.io/argo-helm
+        chart: argo-cd
+        version: "10.1.3"
+        targetNamespace: argocd
+        valuesContent: |
+          global:
+            domain: argocd.sdp.local
+          server:
+            service:
+              type: LoadBalancer
+            args:
+              - --insecure
+          redis:
+            disabled: false
+          controller:
+            replicas: 1
+          repoServer:
+            replicas: 1
+          applicationSet:
+            replicas: 1
 
 runcmd:
   - |
