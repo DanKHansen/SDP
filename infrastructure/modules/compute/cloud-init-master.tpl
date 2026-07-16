@@ -104,9 +104,7 @@ runcmd:
     K3S_TOKEN=$(cat /etc/k3s/token)
     MY_IP=$(hostname -I | awk '{print $1}')
 
-    # Install K3s Server with external cloud provider flags
-    # --disable-cloud-controller: Disable built-in CCM (we use Hetzner's)
-    # REMOVED: --kubelet-arg=cloud-provider=external to prevent boot deadlock
+    # Install K3s Server
     curl -sfL ${k3s_install_url} | sh -s - server \
       --token $K3S_TOKEN \
       --cluster-init \
@@ -116,15 +114,22 @@ runcmd:
       --disable-cloud-controller \
       --write-kubeconfig-mode 644
 
-    # Wait for K3s to be ready (kubectl available)
-    echo "Waiting for K3s cluster to be ready..."
+    # Wait for K3s to be ready
     until kubectl get nodes >/dev/null 2>&1; do
-      echo "K3s not ready yet..."
+      echo "Waiting for cluster to be ready..."
       sleep 5
     done
     echo "K3s Master Ready."
 
-    # Wait for CCM to be ready (max 3 mins)
+    # FIX: Patch CoreDNS to use public DNS (127.0.0.53 is not reachable from pods)
+    echo "Patching CoreDNS to use public DNS..."
+    kubectl patch configmap coredns -n kube-system --type merge -p '{"data":{"Corefile":".:53 {\n    errors\n    health\n    ready\n    kubernetes cluster.local in-addr.arpa ip6.arpa {\n      pods insecure\n      fallthrough in-addr.arpa ip6.arpa\n    }\n    hosts /etc/coredns/NodeHosts {\n      ttl 60\n      reload 15s\n      fallthrough\n    }\n    prometheus :9153\n    forward . 8.8.8.8 1.1.1.1\n    cache 30\n    loop\n    reload\n    loadbalance\n    import /etc/coredns/custom/*.override\n}\nimport /etc/coredns/custom/*.server"}}'
+
+    # Restart CoreDNS to apply changes
+    kubectl rollout restart deployment coredns -n kube-system
+    echo "CoreDNS patched and restarted."
+
+    # Wait for CCM to be ready
     echo "Checking CCM status..."
     for i in $(seq 1 36); do
       if kubectl get pods -n kube-system -l app=hcloud-cloud-controller-manager -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
@@ -135,7 +140,7 @@ runcmd:
       sleep 5
     done
 
-    # Wait for ArgoCD to be ready (max 3 mins)
+    # Wait for ArgoCD to be ready
     echo "Checking ArgoCD status..."
     for i in $(seq 1 36); do
       if kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-server -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
