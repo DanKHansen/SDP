@@ -1,4 +1,5 @@
 #!/bin/bash
+ssh-keygen -R "$MASTER_IP" 2>/dev/null || true
 set -e
 
 # Colors for output
