@@ -1,5 +1,5 @@
 #!/bin/bash
-ssh-keygen -R "$MASTER_IP" 2>/dev/null || true
+
 set -e
 
 # Colors for output
@@ -19,6 +19,9 @@ if [ -z "$MASTER_IP" ]; then
     # For now, let's just ask the user or assume they know the IP from the apply output
     read -p "Enter Master Public IP (from tofu apply output): " MASTER_IP
 fi
+
+# NOW clear the stale key for THIS specific IP
+ssh-keygen -R "$MASTER_IP" 2>/dev/null || true
 
 echo "Targeting Master: $MASTER_IP"
 
