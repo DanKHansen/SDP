@@ -10,26 +10,27 @@ NC='\033[0m' # No Color
 
 echo -e "${YELLOW}🚀 Starting SDP Cluster Verification...${NC}"
 
-# 1. Get the Master IP from the last apply output or env var
-# If you haven't exported it, we'll try to grab it from the state or prompt
+# 1. Get the Master IP
 if [ -z "$MASTER_IP" ]; then
-    # Try to extract from tofu state if available, otherwise prompt
     echo "Detecting Master IP..."
-    # Simple heuristic: try to get the first IP from the last known state or prompt
-    # For now, let's just ask the user or assume they know the IP from the apply output
     read -p "Enter Master Public IP (from tofu apply output): " MASTER_IP
 fi
 
-# NOW clear the stale key for THIS specific IP
+# Clear stale SSH keys for this IP
 ssh-keygen -R "$MASTER_IP" 2>/dev/null || true
 
 echo "Targeting Master: $MASTER_IP"
+
+# Helper function for SSH
+ssh_cmd() {
+    ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@$MASTER_IP "$1"
+}
 
 # 2. Wait for K3s to be ready (kubectl accessible)
 echo -e "${YELLOW}⏳ Waiting for K3s cluster to be ready...${NC}"
 MAX_WAIT=300
 COUNT=0
-while ! ssh -o StrictHostKeyChecking=no root@$MASTER_IP "kubectl get nodes >/dev/null 2>&1"; do
+while ! ssh_cmd "kubectl get nodes >/dev/null 2>&1"; do
     echo -n "."
     sleep 5
     COUNT=$((COUNT+5))
@@ -42,29 +43,69 @@ echo -e "\n${GREEN}✅ K3s cluster is responsive.${NC}"
 
 # 3. Wait for Nodes to be Ready
 echo -e "${YELLOW}⏳ Waiting for all nodes to reach Ready status...${NC}"
-ssh -o StrictHostKeyChecking=no root@$MASTER_IP "kubectl wait --for=condition=Ready nodes --all --timeout=300s"
+if ! ssh_cmd "kubectl wait --for=condition=Ready nodes --all --timeout=300s" 2>/dev/null; then
+    echo -e "${RED}❌ Timeout waiting for nodes to be Ready.${NC}"
+    exit 1
+fi
 echo -e "${GREEN}✅ All nodes are Ready.${NC}"
 
-# 4. Verify Hetzner CCM
+# 4. Verify Hetzner CCM (With Retry Loop)
 echo -e "${YELLOW}⏳ Checking Hetzner Cloud Controller Manager...${NC}"
-ssh -o StrictHostKeyChecking=no root@$MASTER_IP "kubectl wait --for=condition=Available deployment/hcloud-cloud-controller-manager -n kube-system --timeout=300s"
-echo -e "${GREEN}✅ Hetzner CCM is running.${NC}"
+CCM_READY=false
+for i in $(seq 1 60); do
+    # Check if deployment exists AND has available replicas
+    STATUS=$(ssh_cmd "kubectl get deployment hcloud-cloud-controller-manager -n kube-system -o jsonpath='{.status.availableReplicas}' 2>/dev/null" || echo "")
+    if [ "$STATUS" == "1" ]; then
+        CCM_READY=true
+        break
+    fi
+    echo -n "."
+    sleep 5
+done
 
-# 5. Verify ArgoCD
+if [ "$CCM_READY" = true ]; then
+    echo -e "\n${GREEN}✅ Hetzner CCM is running.${NC}"
+else
+    echo -e "\n${RED}❌ Timeout waiting for Hetzner CCM.${NC}"
+    ssh_cmd "kubectl describe deployment hcloud-cloud-controller-manager -n kube-system" || true
+    exit 1
+fi
+
+# 5. Verify ArgoCD (With Retry Loop)
 echo -e "${YELLOW}⏳ Checking ArgoCD Server...${NC}"
-ssh -o StrictHostKeyChecking=no root@$MASTER_IP "kubectl wait --for=condition=Available deployment/argocd-server -n argocd --timeout=300s"
-echo -e "${GREEN}✅ ArgoCD Server is running.${NC}"
+ARGOCD_READY=false
+for i in $(seq 1 60); do
+    # Check if deployment exists AND has available replicas
+    STATUS=$(ssh_cmd "kubectl get deployment argocd-server -n argocd -o jsonpath='{.status.availableReplicas}' 2>/dev/null" || echo "")
+    if [ "$STATUS" == "1" ]; then
+        ARGOCD_READY=true
+        break
+    fi
+    echo -n "."
+    sleep 5
+done
+
+if [ "$ARGOCD_READY" = true ]; then
+    echo -e "\n${GREEN}✅ ArgoCD Server is running.${NC}"
+else
+    echo -e "\n${RED}❌ Timeout waiting for ArgoCD Server.${NC}"
+    # Debug info
+    ssh_cmd "kubectl get pods -n argocd" || true
+    ssh_cmd "kubectl describe deployment argocd-server -n argocd" || true
+    exit 1
+fi
 
 # 6. Final Summary
 echo ""
 echo -e "${GREEN}🎉 SUCCESS! SDP Cluster Verification Complete.${NC}"
 echo "----------------------------------------"
-ssh -o StrictHostKeyChecking=no root@$MASTER_IP "kubectl get nodes"
+echo "Nodes:"
+ssh_cmd "kubectl get nodes"
 echo ""
 echo "ArgoCD Status:"
-ssh -o StrictHostKeyChecking=no root@$MASTER_IP "kubectl get pods -n argocd"
+ssh_cmd "kubectl get pods -n argocd"
 echo ""
 echo "Hetzner CCM Status:"
-ssh -o StrictHostKeyChecking=no root@$MASTER_IP "kubectl get pods -n kube-system -l app=hcloud-cloud-controller-manager"
+ssh_cmd "kubectl get pods -n kube-system -l app=hcloud-cloud-controller-manager"
 echo ""
 echo -e "${YELLOW}💡 Tip: Run 'ssh root@$MASTER_IP' to access the cluster.${NC}"
