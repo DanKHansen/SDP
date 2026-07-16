@@ -18,7 +18,7 @@ runcmd:
     MASTER_IP="${master_ip}"
     echo "Master IP is $MASTER_IP"
 
-    # Wait for master API to be reachable (quick check)
+    # Wait for master API to be reachable
     echo "Waiting for master API on port 6443..."
     for i in $(seq 1 30); do
       if nc -z $MASTER_IP 6443 2>/dev/null; then
@@ -30,11 +30,13 @@ runcmd:
     done
 
     export INSTALL_K3S_VERSION="${k3s_version}"
-    K3S_URL="https://$MASTER_IP:6443"
+    K3S_URL="https://${MASTER_IP}:6443"
     K3S_TOKEN=$(cat /etc/k3s/token)
 
+    # Install Agent with external cloud provider flag
     curl -sfL ${k3s_install_url} | sh -s - agent \
       --token $K3S_TOKEN \
-      --server $K3S_URL
+      --server $K3S_URL \
+      --kubelet-arg=cloud-provider=external
 
     echo "K3s Agent joined successfully."

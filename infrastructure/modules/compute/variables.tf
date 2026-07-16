@@ -38,3 +38,9 @@ variable "k3s_version" {
   description = "Version of K3s to install"
   type        = string
 }
+
+variable "hcloud_token" {
+  description = "Hetzner Cloud API Token (Base64 encoded in template)"
+  type        = string
+  sensitive   = true
+}

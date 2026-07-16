@@ -22,6 +22,12 @@ variable "node_count"   { type = number }
 variable "k3s_version"  { type = string }
 variable "k3s_token"    { type = string }
 
+variable "hcloud_token" {
+  description = "Hetzner Cloud API Token"
+  type        = string
+  sensitive   = true
+}
+
 # 1. Create Network & Firewall
 module "networking" {
   source = "../../modules/networking"
@@ -43,6 +49,7 @@ module "compute" {
   image_id    = var.image
   k3s_token   = var.k3s_token
   k3s_version = var.k3s_version
+  hcloud_token = var.hcloud_token
 }
 
 output "server_public_ips" {
