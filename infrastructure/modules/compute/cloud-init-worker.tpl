@@ -14,13 +14,13 @@ runcmd:
     set -e
     echo "=== Bootstrapping K3s Agent ==="
 
-    MASTER_IP="${master_ip}"
-    echo "Master IP is $MASTER_IP"
+    master_ip="${master_ip}"
+    echo "Master IP is $master_ip"
 
     # Wait for master API to be reachable (quick check)
     echo "Waiting for master API on port 6443..."
     for i in $(seq 1 30); do
-      if nc -z $MASTER_IP 6443 2>/dev/null; then
+      if nc -z $master_ip 6443 2>/dev/null; then
         echo "Master API reachable. Joining cluster..."
         break
       fi
@@ -29,7 +29,7 @@ runcmd:
     done
 
     export INSTALL_K3S_VERSION="${k3s_version}"
-    K3S_URL="https://${MASTER_IP}:6443"
+    K3S_URL="https://${master_ip}:6443"
     K3S_TOKEN=$(cat /etc/k3s/token)
 
     curl -sfL ${k3s_install_url} | sh -s - agent \
