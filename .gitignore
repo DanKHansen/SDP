@@ -18,6 +18,7 @@ security/openbao-secrets/
 *.pfx
 *.crt
 .env
+.envrc  <-- ADD THIS LINE
 .env.local
 .env.production
 credentials.json
@@ -106,3 +107,5 @@ local-dev/kind-cluster/.kubeconfig
 *.tfvars
 !*.tfvars.example
 !*.tfvars.template
+/.env
+/.envrc
