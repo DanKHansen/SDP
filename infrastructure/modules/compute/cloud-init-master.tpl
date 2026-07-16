@@ -23,27 +23,29 @@ write_files:
       data:
         token: ${hcloud_token_b64}
 
-  # 3. Write the Hetzner CCM HelmChart manifest
-  #    References the 'hcloud' secret created above.
-  - path: /var/lib/rancher/k3s/server/manifests/hcloud-ccm.yaml
-    permissions: "0644"
-    content: |
-      apiVersion: helm.cattle.io/v1
-      kind: HelmChart
-      metadata:
-        name: hcloud-ccm
-        namespace: kube-system
-      spec:
-        repo: https://charts.hetzner.cloud
-        chart: hcloud-cloud-controller-manager
-        version: "1.33.0"
-        targetNamespace: kube-system
-        valuesContent: |
-          replicaCount: 1
-          rbac:
-            create: true
-          # The chart defaults to reading HCLOUD_TOKEN from secret 'hcloud' key 'token'
-          # No inline token needed here.
+    # 3. Write the Hetzner CCM HelmChart manifest
+    - path: /var/lib/rancher/k3s/server/manifests/hcloud-ccm.yaml
+      permissions: "0644"
+      content: |
+        apiVersion: helm.cattle.io/v1
+        kind: HelmChart
+        metadata:
+          name: hcloud-ccm
+          namespace: kube-system
+        spec:
+          repo: https://charts.hetzner.cloud
+          chart: hcloud-cloud-controller-manager
+          version: "1.33.0"
+          targetNamespace: kube-system
+          tolerations:
+            - key: "node.cloudprovider.kubernetes.io/uninitialized"
+              operator: "Equal"
+              value: "true"
+              effect: "NoSchedule"
+          valuesContent: |
+            replicaCount: 1
+            rbac:
+              create: true
 
   # 4. Write the ArgoCD HelmChart manifest
   - path: /var/lib/rancher/k3s/server/manifests/argocd.yaml
