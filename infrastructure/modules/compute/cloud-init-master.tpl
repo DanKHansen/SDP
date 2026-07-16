@@ -23,29 +23,34 @@ write_files:
       data:
         token: ${hcloud_token_b64}
 
-    # 3. Write the Hetzner CCM HelmChart manifest
-    - path: /var/lib/rancher/k3s/server/manifests/hcloud-ccm.yaml
-      permissions: "0644"
-      content: |
-        apiVersion: helm.cattle.io/v1
-        kind: HelmChart
-        metadata:
-          name: hcloud-ccm
-          namespace: kube-system
-        spec:
-          repo: https://charts.hetzner.cloud
-          chart: hcloud-cloud-controller-manager
-          version: "1.33.0"
-          targetNamespace: kube-system
-          tolerations:
-            - key: "node.cloudprovider.kubernetes.io/uninitialized"
-              operator: "Equal"
-              value: "true"
-              effect: "NoSchedule"
-          valuesContent: |
-            replicaCount: 1
-            rbac:
-              create: true
+  # 3. Write the Hetzner CCM HelmChart manifest
+  - path: /var/lib/rancher/k3s/server/manifests/hcloud-ccm.yaml
+    permissions: "0644"
+    content: |
+      apiVersion: helm.cattle.io/v1
+      kind: HelmChart
+      metadata:
+        name: hcloud-ccm
+        namespace: kube-system
+      spec:
+        repo: https://charts.hetzner.cloud
+        chart: hcloud-cloud-controller-manager
+        version: "1.33.0"
+        targetNamespace: kube-system
+        tolerations:
+          - key: "node-role.kubernetes.io/master"
+            operator: "Exists"
+            effect: "NoSchedule"
+          - key: "node.cloudprovider.kubernetes.io/uninitialized"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+        valuesContent: |
+          replicaCount: 1
+          rbac:
+            create: true
+          nodeSelector:
+            node-role.kubernetes.io/master: "true"
 
   # 4. Write the ArgoCD HelmChart manifest
   - path: /var/lib/rancher/k3s/server/manifests/argocd.yaml
@@ -90,7 +95,7 @@ runcmd:
 
     # Install K3s Server with external cloud provider flags
     # --disable-cloud-controller: Disable built-in CCM (we use Hetzner's)
-    # --kubelet-arg=cloud-provider=external: Tell kubelet to use external CCM
+    # REMOVED: --kubelet-arg=cloud-provider=external to prevent boot deadlock
     curl -sfL ${k3s_install_url} | sh -s - server \
       --token $K3S_TOKEN \
       --cluster-init \
@@ -98,37 +103,37 @@ runcmd:
       --tls-san $MY_IP \
       --disable traefik \
       --disable-cloud-controller \
-      --kubelet-arg=cloud-provider=external \
       --write-kubeconfig-mode 644
 
-    # Wait for K3s to be ready
+    # Wait for K3s to be ready (kubectl available)
+    echo "Waiting for K3s cluster to be ready..."
     until kubectl get nodes >/dev/null 2>&1; do
-      echo "Waiting for K3s cluster to be ready..."
+      echo "K3s not ready yet..."
       sleep 5
     done
+    echo "K3s Master Ready."
 
-    echo "K3s Master Ready. Waiting for CCM and ArgoCD..."
-
-    # Wait for CCM to be ready (max 2 mins)
+    # Wait for CCM to be ready (max 3 mins)
     echo "Checking CCM status..."
-    for i in $(seq 1 24); do
-      if kubectl get pods -n kube-system -l app=hcloud-cloud-controller-manager >/dev/null 2>&1; then
-        echo "Hetzner CCM detected."
+    for i in $(seq 1 36); do
+      if kubectl get pods -n kube-system -l app=hcloud-cloud-controller-manager -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
+        echo "Hetzner CCM is Running."
         break
       fi
-      echo "Waiting for CCM... ($i/24)"
+      echo "Waiting for CCM... ($i/36)"
       sleep 5
     done
 
-    # Wait for ArgoCD to be ready (max 2 mins)
+    # Wait for ArgoCD to be ready (max 3 mins)
     echo "Checking ArgoCD status..."
-    for i in $(seq 1 24); do
-      if kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-server >/dev/null 2>&1; then
-        echo "ArgoCD server detected."
+    for i in $(seq 1 36); do
+      if kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-server -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
+        echo "ArgoCD Server is Running."
         break
       fi
-      echo "Waiting for ArgoCD... ($i/24)"
+      echo "Waiting for ArgoCD... ($i/36)"
       sleep 5
     done
 
-    echo "Bootstrap complete. CCM and ArgoCD should be starting."
+    echo "Bootstrap complete. Verifying final status..."
+    kubectl get pods -A
