@@ -108,4 +108,4 @@ local-dev/kind-cluster/.kubeconfig
 !*.tfvars.example
 !*.tfvars.template
 /.env
-/.envrc
+.envrc
