@@ -40,10 +40,10 @@ resource "hcloud_server" "worker" {
   }
 
   user_data = templatefile("${path.module}/cloud-init-worker.tpl", {
-    k3s_token   = var.k3s_token
+    k3s_token       = var.k3s_token
     k3s_install_url = "https://get.k3s.io"
-    k3s_version = var.k3s_version
-    master_ip   = hcloud_server.master.private_net[0].ip
+    k3s_version     = var.k3s_version
+    master_ip       = hcloud_server.master.ipv4_address  # <--- BACK TO LOWERCASE
   })
 }
 
