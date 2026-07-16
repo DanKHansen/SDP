@@ -15,9 +15,10 @@ resource "hcloud_server" "master" {
   }
 
   user_data = templatefile("${path.module}/cloud-init-master.tpl", {
-    k3s_token       = var.k3s_token
-    k3s_install_url = "https://get.k3s.io"
-    k3s_version     = var.k3s_version
+    k3s_token        = var.k3s_token
+    k3s_install_url  = "https://get.k3s.io"
+    k3s_version      = var.k3s_version
+    hcloud_token_b64 = base64encode(var.hcloud_token)
   })
 }
 
@@ -39,11 +40,10 @@ resource "hcloud_server" "worker" {
   }
 
   user_data = templatefile("${path.module}/cloud-init-worker.tpl", {
-    k3s_token       = var.k3s_token
+    k3s_token   = var.k3s_token
     k3s_install_url = "https://get.k3s.io"
-    k3s_version     = var.k3s_version
-    master_ip       = hcloud_server.master.ipv4_address
-    hcloud_token_b64      = base64encode(var.hcloud_token)
+    k3s_version = var.k3s_version
+    master_ip   = hcloud_server.master.private_net[0].ip
   })
 }
 
