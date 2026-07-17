@@ -1,3 +1,11 @@
+terraform {
+  required_providers {
+    hcloud = {
+      source  = "hetznercloud/hcloud"
+      version = "~> 1.66.0"
+    }
+  }
+}
 resource "hcloud_network" "sdp_net" {
   name     = "sdp-dev-net"
   ip_range = var.network_cidr
