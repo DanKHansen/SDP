@@ -142,12 +142,28 @@ runcmd:
     systemctl enable iscsid.service
     systemctl start iscsid.service
 
-    # Detect the private network interface (the one with 10.x.x.x IP, excluding overlay)
-    PRIVATE_IFACE=$(ip -br addr show | grep '10\.' | grep -v 'flannel\|cni' | awk '{print $1}' | head -n1)
+    # Detect the private network interface robustly
+    # 1. Try common Hetzner private interface names first
+    PRIVATE_IFACE=""
+    for IFACE in eth1 enp1s1 ens18; do
+      if ip link show "$IFACE" &>/dev/null; then
+        # Check if it has an IP in the 10.x.x.x range (private network)
+        if ip addr show "$IFACE" | grep -q 'inet 10\.'; then
+          PRIVATE_IFACE="$IFACE"
+          break
+        fi
+      fi
+    done
+
+    # 2. Fallback: If still not found, try to find any interface with a 10.x.x.x IP (excluding loopback, flannel, cni)
+    if [ -z "$PRIVATE_IFACE" ]; then
+      PRIVATE_IFACE=$(ip -br addr show | grep 'inet 10\.' | grep -v 'flannel\|cni\|lo' | awk '{print $1}' | head -n1)
+    fi
 
     if [ -z "$PRIVATE_IFACE" ]; then
-        echo "ERROR: Could not detect private network interface. Aborting."
-        exit 1
+      echo "ERROR: Could not detect private network interface. Available interfaces:"
+      ip -br addr show
+      exit 1
     fi
 
     echo "Detected private interface: $PRIVATE_IFACE"
