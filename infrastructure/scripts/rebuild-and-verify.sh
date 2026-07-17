@@ -23,7 +23,7 @@ echo "🏗️  Applying new infrastructure..."
 
 # 3. Extract Master IP
 echo "🔍 Extracting Master IP..."
-MASTER_IP=$(cd "$ENV_DIR" && tofu output -raw server_public_ips | jq -r '.[0]')
+MASTER_IP=$(cd "$ENV_DIR" && tofu output -json server_public_ips | jq -r '.[0]')
 [[ -z "$MASTER_IP" || "$MASTER_IP" == "null" ]] && { echo "❌ Failed to extract Master IP"; exit 1; }
 export MASTER_IP
 echo "Master IP: $MASTER_IP"
