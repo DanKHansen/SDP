@@ -15,7 +15,7 @@ if [[ "${CI:-}" != "true" && "${FORCE_DESTROY:-}" != "1" ]]; then
 fi
 
 echo "🗑️  Destroying infrastructure..."
-(cd "$ENV_DIR" && tofu destroy -auto-approve)
+(cd "$ENV_DIR" && tofu destroy -var-file="$TF_VARS" -auto-approve)
 
 # 2. Apply
 echo "🏗️  Applying new infrastructure..."
