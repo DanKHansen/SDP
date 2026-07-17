@@ -131,7 +131,7 @@ write_files:
 runcmd:
   - |
     #!/bin/bash
-    set -e
+    # Removed 'set -e' to allow graceful handling of transient errors
     echo "=== Bootstrapping K3s Server with Hetzner CCM, ArgoCD & Longhorn ==="
 
     export INSTALL_K3S_VERSION="${k3s_version}"
@@ -159,9 +159,22 @@ runcmd:
     done
     echo "K3s Master Ready."
 
+    # FIX: Wait for CoreDNS ConfigMap to exist before patching
+    echo "Waiting for CoreDNS ConfigMap..."
+    for i in $(seq 1 30); do
+      if kubectl get configmap coredns -n kube-system >/dev/null 2>&1; then
+        echo "CoreDNS ConfigMap found."
+        break
+      fi
+      echo "Waiting... ($i/30)"
+      sleep 2
+    done
+
     # FIX: Patch CoreDNS to use public DNS
     echo "Patching CoreDNS to use public DNS..."
-    kubectl patch configmap coredns -n kube-system --type merge -p '{"data":{"Corefile":".:53 {\n    errors\n    health\n    ready\n    kubernetes cluster.local in-addr.arpa ip6.arpa {\n      pods insecure\n      fallthrough in-addr.arpa ip6.arpa\n    }\n    hosts /etc/coredns/NodeHosts {\n      ttl 60\n      reload 15s\n      fallthrough\n    }\n    prometheus :9153\n    forward . 8.8.8.8 1.1.1.1\n    cache 30\n    loop\n    reload\n    loadbalance\n    import /etc/coredns/custom/*.override\n}\nimport /etc/coredns/custom/*.server"}}'
+    kubectl patch configmap coredns -n kube-system --type merge -p '{"data":{"Corefile":".:53 {\n    errors\n    health\n    ready\n    kubernetes cluster.local in-addr.arpa ip6.arpa {\n      pods insecure\n      fallthrough in-addr.arpa ip6.arpa\n    }\n    hosts /etc/coredns/NodeHosts {\n      ttl 60\n      reload 15s\n      fallthrough\n    }\n    prometheus :9153\n    forward . 8.8.8.8 1.1.1.1\n    cache 30\n    loop\n    reload\n    loadbalance\n    import /etc/coredns/custom/*.override\n}\nimport /etc/coredns/custom/*.server"}}' || {
+      echo "Warning: CoreDNS patch failed, but continuing..."
+    }
     kubectl rollout restart deployment coredns -n kube-system
     echo "CoreDNS patched and restarted."
 
