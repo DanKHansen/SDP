@@ -33,12 +33,23 @@ runcmd:
     systemctl enable iscsid.service
     systemctl start iscsid.service
 
+    # Detect the private network interface
+    PRIVATE_IFACE=$(ip -br addr show | grep '10\.' | grep -v 'flannel\|cni' | awk '{print $1}' | head -n1)
+
+    if [ -z "$PRIVATE_IFACE" ]; then
+        echo "ERROR: Could not detect private network interface. Aborting."
+        exit 1
+    fi
+
+    echo "Detected private interface: $PRIVATE_IFACE"
+
     export INSTALL_K3S_VERSION="${k3s_version}"
     K3S_URL="https://${master_ip}:6443"
     K3S_TOKEN=$(cat /etc/k3s/token)
 
     curl -sfL ${k3s_install_url} | sh -s - agent \
       --token $K3S_TOKEN \
-      --server $K3S_URL
+      --server $K3S_URL \
+      --flannel-iface=$PRIVATE_IFACE
 
     echo "K3s Agent joined successfully."

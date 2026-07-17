@@ -131,7 +131,7 @@ write_files:
 runcmd:
   - |
     #!/bin/bash
-    # Removed 'set -e' to allow graceful handling of transient errors
+    set -e
     echo "=== Bootstrapping K3s Server with Hetzner CCM, ArgoCD & Longhorn ==="
 
     export INSTALL_K3S_VERSION="${k3s_version}"
@@ -142,6 +142,16 @@ runcmd:
     systemctl enable iscsid.service
     systemctl start iscsid.service
 
+    # Detect the private network interface (the one with 10.x.x.x IP, excluding overlay)
+    PRIVATE_IFACE=$(ip -br addr show | grep '10\.' | grep -v 'flannel\|cni' | awk '{print $1}' | head -n1)
+
+    if [ -z "$PRIVATE_IFACE" ]; then
+        echo "ERROR: Could not detect private network interface. Aborting."
+        exit 1
+    fi
+
+    echo "Detected private interface: $PRIVATE_IFACE"
+
     # Install K3s Server
     curl -sfL ${k3s_install_url} | sh -s - server \
       --token $K3S_TOKEN \
@@ -150,7 +160,8 @@ runcmd:
       --tls-san $MY_IP \
       --disable traefik \
       --disable-cloud-controller \
-      --write-kubeconfig-mode 644
+      --write-kubeconfig-mode 644 \
+      --flannel-iface=$PRIVATE_IFACE
 
     # Wait for K3s to be ready
     until kubectl get nodes >/dev/null 2>&1; do
@@ -159,7 +170,7 @@ runcmd:
     done
     echo "K3s Master Ready."
 
-    # FIX: Wait for CoreDNS ConfigMap to exist before patching
+    # Wait for CoreDNS ConfigMap to exist before patching
     echo "Waiting for CoreDNS ConfigMap..."
     for i in $(seq 1 30); do
       if kubectl get configmap coredns -n kube-system >/dev/null 2>&1; then
@@ -170,7 +181,7 @@ runcmd:
       sleep 2
     done
 
-    # FIX: Patch CoreDNS to use public DNS
+    # Patch CoreDNS to use public DNS
     echo "Patching CoreDNS to use public DNS..."
     kubectl patch configmap coredns -n kube-system --type merge -p '{"data":{"Corefile":".:53 {\n    errors\n    health\n    ready\n    kubernetes cluster.local in-addr.arpa ip6.arpa {\n      pods insecure\n      fallthrough in-addr.arpa ip6.arpa\n    }\n    hosts /etc/coredns/NodeHosts {\n      ttl 60\n      reload 15s\n      fallthrough\n    }\n    prometheus :9153\n    forward . 8.8.8.8 1.1.1.1\n    cache 30\n    loop\n    reload\n    loadbalance\n    import /etc/coredns/custom/*.override\n}\nimport /etc/coredns/custom/*.server"}}' || {
       echo "Warning: CoreDNS patch failed, but continuing..."
