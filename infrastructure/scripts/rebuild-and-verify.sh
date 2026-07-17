@@ -18,7 +18,7 @@ if [[ "${CI:-}" != "true" && "${FORCE_DESTROY:-}" != "1" ]]; then
 fi
 
 echo "🗑️  Destroying infrastructure..."
-(cd "$ENV_DIR" && tofu destroy -auto-approve) || true # Ignore errors if already destroyed
+(cd "$ENV_DIR" && tofu destroy -var-file="$TF_VARS" -auto-approve) || true
 
 # 2. Apply with Automatic Location Failover
 APPLY_SUCCESS=false
