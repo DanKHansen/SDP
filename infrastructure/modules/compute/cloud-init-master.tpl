@@ -2,6 +2,7 @@
 packages:
   - curl
   - iptables
+  - open-iscsi
 
 write_files:
   # 1. Write the K3s join token
@@ -10,7 +11,6 @@ write_files:
     content: ${k3s_token}
 
   # 2. Write the Hetzner Cloud Secret (Base64 encoded token)
-  #    The CCM chart expects a secret named 'hcloud' with key 'token'
   - path: /var/lib/rancher/k3s/server/manifests/hcloud-secret.yaml
     permissions: "0644"
     content: |
@@ -52,7 +52,7 @@ write_files:
           nodeSelector:
             node-role.kubernetes.io/master: "true"
 
-  # 4. Create ArgoCD Namespace (Prerequisite for HelmChart)
+  # 4. Create ArgoCD Namespace
   - path: /var/lib/rancher/k3s/server/manifests/01-argocd-namespace.yaml
     permissions: "0644"
     content: |
@@ -94,15 +94,53 @@ write_files:
           applicationSet:
             replicas: 1
 
+  # 6. Create Longhorn Namespace
+  - path: /var/lib/rancher/k3s/server/manifests/03-longhorn-system-namespace.yaml
+    permissions: "0644"
+    content: |
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: longhorn-system
+        labels:
+          pod-security.kubernetes.io/enforce: privileged
+
+  # 7. Write the Longhorn HelmChart manifest
+  - path: /var/lib/rancher/k3s/server/manifests/04-longhorn.yaml
+    permissions: "0644"
+    content: |
+      apiVersion: helm.cattle.io/v1
+      kind: HelmChart
+      metadata:
+        name: longhorn
+        namespace: kube-system
+      spec:
+        repo: https://charts.longhorn.io
+        chart: longhorn
+        version: "1.12.0"
+        targetNamespace: longhorn-system
+        valuesContent: |
+          persistence:
+            defaultClass: true
+            defaultClassReplicaCount: 3
+          defaultSettings:
+            defaultDataPath: /var/lib/longhorn
+            replicaSoftAntiAffinity: false
+            storageMinimalAvailablePercentage: 25
+
 runcmd:
   - |
     #!/bin/bash
     set -e
-    echo "=== Bootstrapping K3s Server with Hetzner CCM & ArgoCD ==="
+    echo "=== Bootstrapping K3s Server with Hetzner CCM, ArgoCD & Longhorn ==="
 
     export INSTALL_K3S_VERSION="${k3s_version}"
     K3S_TOKEN=$(cat /etc/k3s/token)
     MY_IP=$(hostname -I | awk '{print $1}')
+
+    # Start iscsid service (required for Longhorn CSI)
+    systemctl enable iscsid.service
+    systemctl start iscsid.service
 
     # Install K3s Server
     curl -sfL ${k3s_install_url} | sh -s - server \
@@ -121,18 +159,16 @@ runcmd:
     done
     echo "K3s Master Ready."
 
-    # FIX: Patch CoreDNS to use public DNS (127.0.0.53 is not reachable from pods)
+    # FIX: Patch CoreDNS to use public DNS
     echo "Patching CoreDNS to use public DNS..."
     kubectl patch configmap coredns -n kube-system --type merge -p '{"data":{"Corefile":".:53 {\n    errors\n    health\n    ready\n    kubernetes cluster.local in-addr.arpa ip6.arpa {\n      pods insecure\n      fallthrough in-addr.arpa ip6.arpa\n    }\n    hosts /etc/coredns/NodeHosts {\n      ttl 60\n      reload 15s\n      fallthrough\n    }\n    prometheus :9153\n    forward . 8.8.8.8 1.1.1.1\n    cache 30\n    loop\n    reload\n    loadbalance\n    import /etc/coredns/custom/*.override\n}\nimport /etc/coredns/custom/*.server"}}'
-
-    # Restart CoreDNS to apply changes
     kubectl rollout restart deployment coredns -n kube-system
     echo "CoreDNS patched and restarted."
 
     # Wait for CCM to be ready
     echo "Checking CCM status..."
     for i in $(seq 1 36); do
-      if kubectl get pods -n kube-system -l app=hcloud-cloud-controller-manager -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
+      if kubectl get pods -n kube-system -l app.kubernetes.io/name=hcloud-cloud-controller-manager -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
         echo "Hetzner CCM is Running."
         break
       fi
@@ -148,6 +184,17 @@ runcmd:
         break
       fi
       echo "Waiting for ArgoCD... ($i/36)"
+      sleep 5
+    done
+
+    # Wait for Longhorn to be ready
+    echo "Checking Longhorn status..."
+    for i in $(seq 1 36); do
+      if kubectl get pods -n longhorn-system -l app.kubernetes.io/name=longhorn-manager -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
+        echo "Longhorn Manager is Running."
+        break
+      fi
+      echo "Waiting for Longhorn... ($i/36)"
       sleep 5
     done
 

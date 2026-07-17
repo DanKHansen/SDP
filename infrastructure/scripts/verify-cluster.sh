@@ -95,17 +95,41 @@ else
     exit 1
 fi
 
-# 6. Final Summary
+# 6. Verify Longhorn (With Retry Loop)
+echo -e "${YELLOW}⏳ Checking Longhorn Manager...${NC}"
+LONGHORN_READY=false
+for _ in $(seq 1 60); do
+    # Check if deployment exists AND has available replicas
+    STATUS=$(ssh_cmd "kubectl get deployment longhorn-manager -n longhorn-system -o jsonpath='{.status.availableReplicas}' 2>/dev/null" || echo "")
+    if [ "$STATUS" == "1" ]; then
+        LONGHORN_READY=true
+        break
+    fi
+    echo -n "."
+    sleep 5
+done
+
+if [ "$LONGHORN_READY" = true ]; then
+    echo -e "\n${GREEN}✅ Longhorn Manager is running.${NC}"
+else
+    echo -e "\n${RED}❌ Timeout waiting for Longhorn Manager.${NC}"
+    # Debug info
+    ssh_cmd "kubectl get pods -n longhorn-system" || true
+    ssh_cmd "kubectl describe deployment longhorn-manager -n longhorn-system" || true
+    exit 1
+fi
+
+# Final Summary
 echo ""
-echo -e "${GREEN}🎉 SUCCESS! SDP Cluster Verification Complete.${NC}"
-echo "----------------------------------------"
-echo "Nodes:"
-ssh_cmd "kubectl get nodes"
-echo ""
-echo "ArgoCD Status:"
-ssh_cmd "kubectl get pods -n argocd"
-echo ""
-echo "Hetzner CCM Status:"
-ssh_cmd "kubectl get pods -n kube-system -l app.kubernetes.io/name=hcloud-cloud-controller-manager"
-echo ""
-echo -e "${YELLOW}💡 Tip: Run 'ssh root@${MASTER_IP}' to access the cluster.${NC}"
+echo "=== VERIFICATION SUMMARY ==="
+[[ "$CCM_READY" == "true" ]] && echo "✅ Hetzner CCM: OK" || echo "❌ Hetzner CCM: FAILED"
+[[ "$ARGOCD_READY" == "true" ]] && echo "✅ ArgoCD: OK" || echo "❌ ArgoCD: FAILED"
+[[ "$LONGHORN_READY" == "true" ]] && echo "✅ Longhorn: OK" || echo "❌ Longhorn: FAILED"
+
+if [[ "$CCM_READY" == "true" && "$ARGOCD_READY" == "true" && "$LONGHORN_READY" == "true" ]]; then
+    echo -e "${GREEN}All systems operational.${NC}"
+    exit 0
+else
+    echo -e "${RED}Some checks failed. Review logs.${NC}"
+    exit 1
+fi

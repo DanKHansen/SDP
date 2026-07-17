@@ -2,6 +2,7 @@
 packages:
   - curl
   - iptables
+  - open-iscsi
 
 write_files:
   - path: /etc/k3s/token
@@ -17,7 +18,7 @@ runcmd:
     master_ip="${master_ip}"
     echo "Master IP is $master_ip"
 
-    # Wait for master API to be reachable (quick check)
+    # Wait for master API to be reachable
     echo "Waiting for master API on port 6443..."
     for i in $(seq 1 30); do
       if nc -z $master_ip 6443 2>/dev/null; then
@@ -27,6 +28,10 @@ runcmd:
       echo "Waiting... (Attempt $i/30)"
       sleep 5
     done
+
+    # Start iscsid service (required for Longhorn CSI)
+    systemctl enable iscsid.service
+    systemctl start iscsid.service
 
     export INSTALL_K3S_VERSION="${k3s_version}"
     K3S_URL="https://${master_ip}:6443"
