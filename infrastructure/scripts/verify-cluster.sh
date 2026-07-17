@@ -41,13 +41,35 @@ while ! ssh_cmd "kubectl get nodes >/dev/null 2>&1"; do
 done
 echo -e "\n${GREEN}✅ K3s cluster is responsive.${NC}"
 
-# 3. Wait for Nodes to be Ready
+# 3. Wait for Nodes to be Ready (Individual Check)
 echo -e "${YELLOW}⏳ Waiting for all nodes to reach Ready status...${NC}"
-if ! ssh_cmd "kubectl wait --for=condition=Ready nodes --all --timeout=300s" 2>/dev/null; then
-    echo -e "${RED}❌ Timeout waiting for nodes to be Ready.${NC}"
+MAX_WAIT=420  # Increased from 300 to 420 seconds (7 mins)
+COUNT=0
+ALL_READY=false
+
+while [ "$COUNT" -lt "$MAX_WAIT" ]; do
+    # Get list of nodes and their statuses
+    NODE_STATUS=$(ssh_cmd "kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}:{.status.conditions[?(@.type==\"Ready\")].status}{\"\\n\"}{end}'" 2>/dev/null || echo "")
+
+    # Check if all nodes are Ready
+    if echo "$NODE_STATUS" | grep -q ":False\|:Unknown"; then
+        # Not all ready yet
+        echo -n "."
+        sleep 5
+        COUNT=$((COUNT+5))
+    else
+        ALL_READY=true
+        break
+    fi
+done
+
+if [ "$ALL_READY" = true ]; then
+    echo -e "\n${GREEN}✅ All nodes are Ready.${NC}"
+else
+    echo -e "\n${RED}❌ Timeout waiting for nodes to be Ready.${NC}"
+    ssh_cmd "kubectl get nodes" || true
     exit 1
 fi
-echo -e "${GREEN}✅ All nodes are Ready.${NC}"
 
 # 4. Verify Hetzner CCM (With Retry Loop)
 echo -e "${YELLOW}⏳ Checking Hetzner Cloud Controller Manager...${NC}"

@@ -29,7 +29,7 @@ for LOCATION in "${LOCATIONS[@]}"; do
 
     # Update tfvars temporarily
     cp "$ENV_DIR/$TF_VARS" "$ENV_DIR/${TF_VARS}.bak"
-    sed -i "s/^location = .*/location = \"$LOCATION\"/" "$ENV_DIR/$TF_VARS"
+    sed -i "s/^location\s*=.*/location = \"$LOCATION\"/" "$ENV_DIR/$TF_VARS"
 
     # CRITICAL: If location changed from previous attempt, force a full destroy
     # to recreate the network and firewall in the new region.
