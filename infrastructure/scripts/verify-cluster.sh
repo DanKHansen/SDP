@@ -95,13 +95,13 @@ else
     exit 1
 fi
 
-# 6. Verify Longhorn (With Retry Loop)
+# 6. Verify Longhorn (With Retry Loop - DaemonSet Check)
 echo -e "${YELLOW}⏳ Checking Longhorn Manager...${NC}"
 LONGHORN_READY=false
 for _ in $(seq 1 60); do
-    # Check if deployment exists AND has available replicas
-    STATUS=$(ssh_cmd "kubectl get deployment longhorn-manager -n longhorn-system -o jsonpath='{.status.availableReplicas}' 2>/dev/null" || echo "")
-    if [ "$STATUS" == "1" ]; then
+    # Check DaemonSet status: desiredNumberScheduled == numberReady
+    STATUS=$(ssh_cmd "kubectl get daemonset longhorn-manager -n longhorn-system -o jsonpath='{.status.numberReady}/{.status.desiredNumberScheduled}' 2>/dev/null" || echo "")
+    if [ "$STATUS" == "3/3" ]; then
         LONGHORN_READY=true
         break
     fi
@@ -115,7 +115,7 @@ else
     echo -e "\n${RED}❌ Timeout waiting for Longhorn Manager.${NC}"
     # Debug info
     ssh_cmd "kubectl get pods -n longhorn-system" || true
-    ssh_cmd "kubectl describe deployment longhorn-manager -n longhorn-system" || true
+    ssh_cmd "kubectl describe daemonset longhorn-manager -n longhorn-system" || true
     exit 1
 fi
 
