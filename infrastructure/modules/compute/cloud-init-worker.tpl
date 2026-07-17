@@ -36,7 +36,7 @@ runcmd:
     done
     sleep 3
 
-    # Detect private interface (Shell variable)
+    # Detect private interface
     PRIVATE_IFACE=""
     for i in $(seq 1 30); do
       PRIVATE_IFACE=$(ip -br addr show | grep ' 10\.' | grep -v 'flannel\|cni\|lo' | awk '{print $1}' | head -n1)
@@ -44,9 +44,7 @@ runcmd:
         break
       fi
     
-      # If no IP found, ensure netplan config exists and restart networkd
       if [ ! -f /etc/netplan/60-private-network.yaml ]; then
-        # Guess the interface name (enp7s0 is standard on Hetzner)
         GUESS_IFACE=$(ip -br link show | awk '$2 == "UP" && $1 != "lo" && $1 != "eth0" {print $1; exit}')
         if [ -n "$GUESS_IFACE" ]; then
           printf 'network:\n  version: 2\n  renderer: networkd\n  ethernets:\n    %s:\n      dhcp4: true\n' "$GUESS_IFACE" > /etc/netplan/60-private-network.yaml
@@ -66,7 +64,6 @@ runcmd:
 
     echo "Detected private interface: $PRIVATE_IFACE"
 
-    # Write netplan config dynamically (Shell variable $PRIVATE_IFACE)
     printf 'network:\n  version: 2\n  renderer: networkd\n  ethernets:\n    %s:\n      dhcp4: true\n' "$PRIVATE_IFACE" > /etc/netplan/60-private-network.yaml
     chmod 600 /etc/netplan/60-private-network.yaml
     netplan apply 2>/dev/null || true
@@ -76,13 +73,22 @@ runcmd:
     K3S_URL="https://${master_ip}:6443"
     K3S_TOKEN=$(cat /etc/k3s/token)
 
-    # Run curl in a subshell to capture exit code properly in dash
-    (curl -sfL ${k3s_install_url} | sh -s - agent \
+    # Download installer script first (separates download from execution)
+    echo "Downloading K3s installer..."
+    if ! curl -sfL -o /tmp/k3s-install.sh ${k3s_install_url}; then
+      echo "ERROR: Failed to download K3s installer."
+      exit 1
+    fi
+    chmod +x /tmp/k3s-install.sh
+
+    # Run installer
+    echo "Installing K3s agent..."
+    if ! /tmp/k3s-install.sh agent \
       --token "$K3S_TOKEN" \
       --server "$K3S_URL" \
-      --flannel-iface="$PRIVATE_IFACE") || {
+      --flannel-iface="$PRIVATE_IFACE"; then
       echo "ERROR: K3s agent installation failed."
       exit 1
-    }
+    fi
 
     echo "K3s Agent joined successfully."

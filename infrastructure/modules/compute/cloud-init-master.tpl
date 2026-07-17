@@ -127,7 +127,6 @@ runcmd:
     set -e
     echo "=== Bootstrapping K3s Server ==="
 
-    # Terraform variables (lowercase, passed from main.tf)
     export INSTALL_K3S_VERSION="${k3s_version}"
     K3S_TOKEN=$(cat /etc/k3s/token)
     MY_IP=$(hostname -I | awk '{print $1}')
@@ -141,7 +140,7 @@ runcmd:
     done
     sleep 3
 
-    # Detect private interface (Shell variable)
+    # Detect private interface
     PRIVATE_IFACE=""
     for i in $(seq 1 30); do
       PRIVATE_IFACE=$(ip -br addr show | grep ' 10\.' | grep -v 'flannel\|cni\|lo' | awk '{print $1}' | head -n1)
@@ -149,9 +148,7 @@ runcmd:
         break
       fi
     
-      # If no IP found, ensure netplan config exists and restart networkd
       if [ ! -f /etc/netplan/60-private-network.yaml ]; then
-        # Guess the interface name (enp7s0 is standard on Hetzner)
         GUESS_IFACE=$(ip -br link show | awk '$2 == "UP" && $1 != "lo" && $1 != "eth0" {print $1; exit}')
         if [ -n "$GUESS_IFACE" ]; then
           printf 'network:\n  version: 2\n  renderer: networkd\n  ethernets:\n    %s:\n      dhcp4: true\n' "$GUESS_IFACE" > /etc/netplan/60-private-network.yaml
@@ -171,21 +168,32 @@ runcmd:
 
     echo "Detected private interface: $PRIVATE_IFACE"
 
-    # Write netplan config dynamically (Shell variable $PRIVATE_IFACE)
     printf 'network:\n  version: 2\n  renderer: networkd\n  ethernets:\n    %s:\n      dhcp4: true\n' "$PRIVATE_IFACE" > /etc/netplan/60-private-network.yaml
     chmod 600 /etc/netplan/60-private-network.yaml
     netplan apply 2>/dev/null || true
 
-    # Install K3s (Shell variable $PRIVATE_IFACE)
-    curl -sfL ${k3s_install_url} | sh -s - server \
-      --token $K3S_TOKEN \
+    # Download installer script first (separates download from execution)
+    echo "Downloading K3s installer..."
+    if ! curl -sfL -o /tmp/k3s-install.sh ${k3s_install_url}; then
+      echo "ERROR: Failed to download K3s installer."
+      exit 1
+    fi
+    chmod +x /tmp/k3s-install.sh
+
+    # Run installer
+    echo "Installing K3s server..."
+    if ! /tmp/k3s-install.sh server \
+      --token "$K3S_TOKEN" \
       --cluster-init \
-      --advertise-address $MY_IP \
-      --tls-san $MY_IP \
+      --advertise-address "$MY_IP" \
+      --tls-san "$MY_IP" \
       --disable traefik \
       --disable-cloud-controller \
       --write-kubeconfig-mode 644 \
-      --flannel-iface=$PRIVATE_IFACE
+      --flannel-iface="$PRIVATE_IFACE"; then
+      echo "ERROR: K3s server installation failed."
+      exit 1
+    fi
 
     until kubectl get nodes >/dev/null 2>&1; do
       echo "Waiting for cluster..."
@@ -193,7 +201,6 @@ runcmd:
     done
     echo "K3s Master Ready."
 
-    # Wait for CoreDNS ConfigMap
     for i in $(seq 1 30); do
       if kubectl get configmap coredns -n kube-system >/dev/null 2>&1; then
         break
@@ -201,12 +208,10 @@ runcmd:
       sleep 2
     done
 
-    # Patch CoreDNS
     kubectl patch configmap coredns -n kube-system --type merge -p '{"data":{"Corefile":".:53 {\n    errors\n    health\n    ready\n    kubernetes cluster.local in-addr.arpa ip6.arpa {\n      pods insecure\n      fallthrough in-addr.arpa ip6.arpa\n    }\n    hosts /etc/coredns/NodeHosts {\n      ttl 60\n      reload 15s\n      fallthrough\n    }\n    prometheus :9153\n    forward . 8.8.8.8 1.1.1.1\n    cache 30\n    loop\n    reload\n    loadbalance\n    import /etc/coredns/custom/*.override\n}\nimport /etc/coredns/custom/*.server"}}' || echo "CoreDNS patch failed, continuing..."
     kubectl rollout restart deployment coredns -n kube-system
     echo "CoreDNS patched."
 
-    # Wait for CCM
     echo "Waiting for CCM..."
     for i in $(seq 1 36); do
       if kubectl get pods -n kube-system -l app.kubernetes.io/name=hcloud-cloud-controller-manager -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
@@ -216,7 +221,6 @@ runcmd:
       sleep 5
     done
 
-    # Wait for ArgoCD
     echo "Waiting for ArgoCD..."
     for i in $(seq 1 36); do
       if kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-server -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
@@ -226,7 +230,6 @@ runcmd:
       sleep 5
     done
 
-    # Wait for Longhorn
     echo "Waiting for Longhorn..."
     for i in $(seq 1 36); do
       if kubectl get pods -n longhorn-system -l app.kubernetes.io/name=longhorn-manager -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
