@@ -36,29 +36,35 @@ runcmd:
     done
     sleep 3
 
-    # Detect private interface
-    PRIVATE_IFACE=""
+    # Detect private interface (the one with 10.x.x.x address)
+    # Use grep to find lines containing " 10." and extract the interface name
+    PRIVATE_IFACE=$(ip -br addr show | grep " 10\." | awk '{print $1}')
+
+    if [ -z "$PRIVATE_IFACE" ]; then
+      echo "ERROR: Could not detect private interface with 10.x.x.x address."
+      ip -br addr show
+      exit 1
+    fi
+
+    echo "Detected private interface: $PRIVATE_IFACE"
+
+    # Wait for IPv4 address on the private interface
+    echo "Waiting for private interface to get IPv4..."
+    PRIVATE_IP=""
     for i in $(seq 1 30); do
-      PRIVATE_IFACE=$(ip -br addr show | grep ' 10\.' | grep -v 'flannel\|cni\|lo' | awk '{print $1}' | head -n1)
-      if [ -n "$PRIVATE_IFACE" ]; then
-        break
-      fi
+      # Extract ONLY IPv4 addresses (regex for dotted decimal)
+      PRIVATE_IP=$(ip -br addr show "$PRIVATE_IFACE" | grep -oE '10\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
     
-      if [ ! -f /etc/netplan/60-private-network.yaml ]; then
-        GUESS_IFACE=$(ip -br link show | awk '$2 == "UP" && $1 != "lo" && $1 != "eth0" {print $1; exit}')
-        if [ -n "$GUESS_IFACE" ]; then
-          printf 'network:\n  version: 2\n  renderer: networkd\n  ethernets:\n    %s:\n      dhcp4: true\n' "$GUESS_IFACE" > /etc/netplan/60-private-network.yaml
-          chmod 600 /etc/netplan/60-private-network.yaml
-          netplan apply 2>/dev/null || true
-          systemctl restart systemd-networkd 2>/dev/null || true
-        fi
+      if [ -n "$PRIVATE_IP" ]; then
+        echo "Private IPv4: $PRIVATE_IP"
+        break
       fi
       sleep 2
     done
 
-    if [ -z "$PRIVATE_IFACE" ]; then
-      echo "ERROR: Could not detect private network interface."
-      ip -br addr show
+    if [ -z "$PRIVATE_IP" ]; then
+      echo "ERROR: Private interface never got an IPv4 address."
+      ip -br addr show "$PRIVATE_IFACE"
       exit 1
     fi
 
