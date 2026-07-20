@@ -73,7 +73,7 @@ runcmd:
 
     # Retry loop for K3s installer download
     export INSTALL_K3S_VERSION="${k3s_version}"
-    K3S_URL="https://${MASTER_IP}:6443"
+    K3S_URL="https://$MASTER_IP:6443"
     K3S_TOKEN=$(cat /etc/k3s/token)
 
     echo "Downloading K3s installer..."
