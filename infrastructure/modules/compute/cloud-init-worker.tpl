@@ -18,15 +18,6 @@ runcmd:
     # Terraform variable (lowercase, passed from main.tf)
     MASTER_IP="${master_ip}"
 
-    # Wait for master API
-    for i in $(seq 1 30); do
-      if nc -z $MASTER_IP 6443 2>/dev/null; then
-        echo "Master API reachable."
-        break
-      fi
-      sleep 5
-    done
-
     systemctl enable iscsid.service
     systemctl start iscsid.service
 
@@ -37,7 +28,6 @@ runcmd:
     sleep 3
 
     # Detect private interface (the one with 10.x.x.x address)
-    # Use grep to find lines containing " 10." and extract the interface name
     PRIVATE_IFACE=$(ip -br addr show | grep " 10\." | awk '{print $1}')
 
     if [ -z "$PRIVATE_IFACE" ]; then
@@ -52,9 +42,7 @@ runcmd:
     echo "Waiting for private interface to get IPv4..."
     PRIVATE_IP=""
     for i in $(seq 1 30); do
-      # Extract ONLY IPv4 addresses (regex for dotted decimal)
       PRIVATE_IP=$(ip -br addr show "$PRIVATE_IFACE" | grep -oE '10\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-    
       if [ -n "$PRIVATE_IP" ]; then
         echo "Private IPv4: $PRIVATE_IP"
         break
@@ -68,40 +56,45 @@ runcmd:
       exit 1
     fi
 
-    echo "Detected private interface: $PRIVATE_IFACE"
-
+    # Configure Netplan for private interface
     printf 'network:\n  version: 2\n  renderer: networkd\n  ethernets:\n    %s:\n      dhcp4: true\n' "$PRIVATE_IFACE" > /etc/netplan/60-private-network.yaml
     chmod 600 /etc/netplan/60-private-network.yaml
     netplan apply 2>/dev/null || true
 
-    # Wait for private interface to get an IP address
-    echo "Waiting for private interface to get IP..."
+    # NOW wait for master API (interface is up, so this should work)
+    echo "Waiting for Master API at $MASTER_IP:6443..."
     for i in $(seq 1 30); do
-      PRIVATE_IP=$(ip -br addr show "$PRIVATE_IFACE" | awk '{print $3}' | cut -d'/' -f1)
-      if [ -n "$PRIVATE_IP" ]; then
-        echo "Private IP: $PRIVATE_IP"
+      if nc -z $MASTER_IP 6443 2>/dev/null; then
+        echo "Master API reachable."
         break
       fi
-      sleep 2
+      sleep 5
     done
 
-    if [ -z "$PRIVATE_IP" ]; then
-      echo "ERROR: Private interface never got an IP address."
-      ip -br addr show
-      exit 1
-    fi
-
-    # Install K3s
+    # Retry loop for K3s installer download
     export INSTALL_K3S_VERSION="${k3s_version}"
-    K3S_URL="https://${master_ip}:6443"
+    K3S_URL="https://${MASTER_IP}:6443"
     K3S_TOKEN=$(cat /etc/k3s/token)
 
-    # Download installer script first (separates download from execution)
     echo "Downloading K3s installer..."
-    if ! curl -sfL -o /tmp/k3s-install.sh ${k3s_install_url}; then
-      echo "ERROR: Failed to download K3s installer."
+    CURL_SUCCESS=false
+    for attempt in $(seq 1 5); do
+      echo "Attempt $attempt to download K3s installer..."
+      if curl -sfL --connect-timeout 30 -o /tmp/k3s-install.sh "${k3s_install_url}"; then
+        echo "Download successful."
+        CURL_SUCCESS=true
+        break
+      else
+        echo "Download failed. Retrying in 10 seconds..."
+        sleep 10
+      fi
+    done
+
+    if [ "$CURL_SUCCESS" = false ]; then
+      echo "ERROR: Failed to download K3s installer after 5 attempts."
       exit 1
     fi
+
     chmod +x /tmp/k3s-install.sh
 
     # Run installer
@@ -109,7 +102,8 @@ runcmd:
     if ! /tmp/k3s-install.sh agent \
       --token "$K3S_TOKEN" \
       --server "$K3S_URL" \
-      --flannel-iface="$PRIVATE_IFACE"; then
+      --flannel-iface="$PRIVATE_IFACE" \
+      --kubelet-arg=cloud-provider=external; then
       echo "ERROR: K3s agent installation failed."
       exit 1
     fi
