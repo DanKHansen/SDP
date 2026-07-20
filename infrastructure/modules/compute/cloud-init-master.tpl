@@ -120,6 +120,9 @@ write_files:
             defaultDataPath: /var/lib/longhorn
             replicaSoftAntiAffinity: false
             storageMinimalAvailablePercentage: 25
+          # CRITICAL: Disable preUpgradeChecker for ArgoCD compatibility
+          preUpgradeChecker:
+            jobEnabled: false
 
 runcmd:
   - |

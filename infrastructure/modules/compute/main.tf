@@ -52,7 +52,7 @@ resource "hcloud_server" "worker" {
     k3s_token       = var.k3s_token
     k3s_install_url = "https://get.k3s.io"
     k3s_version     = var.k3s_version
-    master_ip       = hcloud_server.master.ipv4_address  # <--- BACK TO LOWERCASE
+    master_ip       = hcloud_server.master.network[0].ip
   })
 }
 
