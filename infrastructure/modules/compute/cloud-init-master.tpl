@@ -176,6 +176,10 @@ runcmd:
     chmod 600 /etc/netplan/60-private-network.yaml
     netplan apply 2>/dev/null || true
 
+    # Get Public IP (for node registration with CCM)
+    PUBLIC_IP=$(curl -s ifconfig.me)
+    echo "Public IP detected: $PUBLIC_IP"
+
     # Retry loop for K3s installer download (handles DNS/network race conditions)
     echo "Downloading K3s installer..."
     CURL_SUCCESS=false
@@ -208,6 +212,7 @@ runcmd:
       --cluster-init \
       --advertise-address "$PRIVATE_IP" \
       --tls-san "$PRIVATE_IP" \
+      --node-external-ip "$PUBLIC_IP" \
       --disable traefik \
       --disable-cloud-controller \
       --write-kubeconfig-mode 644 \

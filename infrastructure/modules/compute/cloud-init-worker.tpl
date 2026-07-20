@@ -97,12 +97,17 @@ runcmd:
 
     chmod +x /tmp/k3s-install.sh
 
-    # Run installer
+    # Get Public IP (for node registration with CCM)
+    PUBLIC_IP=$(curl -s ifconfig.me)
+    echo "Public IP detected: $PUBLIC_IP"
+    
+    # Install K3s agent
     echo "Installing K3s agent..."
     if ! /tmp/k3s-install.sh agent \
       --token "$K3S_TOKEN" \
       --server "$K3S_URL" \
       --flannel-iface="$PRIVATE_IFACE" \
+      --node-ip="$PUBLIC_IP" \
       --kubelet-arg=cloud-provider=external; then
       echo "ERROR: K3s agent installation failed."
       exit 1
