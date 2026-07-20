@@ -97,8 +97,8 @@ runcmd:
 
     chmod +x /tmp/k3s-install.sh
 
-    # Get Public IP (for node registration with CCM)
-    PUBLIC_IP=$(curl -s ifconfig.me)
+    # Get Public IP from local interface (no external dependency)
+    PUBLIC_IP=$(ip -br addr show eth0 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
     echo "Public IP detected: $PUBLIC_IP"
     
     # Install K3s agent

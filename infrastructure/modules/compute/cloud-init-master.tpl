@@ -176,8 +176,8 @@ runcmd:
     chmod 600 /etc/netplan/60-private-network.yaml
     netplan apply 2>/dev/null || true
 
-    # Get Public IP (for node registration with CCM)
-    PUBLIC_IP=$(curl -s ifconfig.me)
+    # Get Public IP from local interface (no external dependency)
+    PUBLIC_IP=$(ip -br addr show eth0 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
     echo "Public IP detected: $PUBLIC_IP"
 
     # Retry loop for K3s installer download (handles DNS/network race conditions)
