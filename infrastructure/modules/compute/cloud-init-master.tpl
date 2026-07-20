@@ -175,16 +175,25 @@ runcmd:
     chmod 600 /etc/netplan/60-private-network.yaml
     netplan apply 2>/dev/null || true
 
-    # Download installer script first (separates download from execution)
-    echo "Downloading K3s installer..."
-    if ! curl -sfL -o /tmp/k3s-install.sh ${k3s_install_url}; then
-      echo "ERROR: Failed to download K3s installer."
+    # Wait for private interface to get an IP address
+    echo "Waiting for private interface to get IP..."
+    for i in $(seq 1 30); do
+      PRIVATE_IP=$(ip -br addr show "$PRIVATE_IFACE" | awk '{print $3}' | cut -d'/' -f1)
+      if [ -n "$PRIVATE_IP" ]; then
+        echo "Private IP: $PRIVATE_IP"
+        break
+      fi
+      sleep 2
+    done
+
+    if [ -z "$PRIVATE_IP" ]; then
+      echo "ERROR: Private interface never got an IP address."
+      ip -br addr show
       exit 1
     fi
-    chmod +x /tmp/k3s-install.sh
 
-    # Run installer
-    echo "Installing K3s server..."
+    # Download installer script first (separates download from execution)
+    echo "Downloading K3s installer..."
     if ! /tmp/k3s-install.sh server \
       --token "$K3S_TOKEN" \
       --cluster-init \

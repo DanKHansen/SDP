@@ -68,6 +68,23 @@ runcmd:
     chmod 600 /etc/netplan/60-private-network.yaml
     netplan apply 2>/dev/null || true
 
+    # Wait for private interface to get an IP address
+    echo "Waiting for private interface to get IP..."
+    for i in $(seq 1 30); do
+      PRIVATE_IP=$(ip -br addr show "$PRIVATE_IFACE" | awk '{print $3}' | cut -d'/' -f1)
+      if [ -n "$PRIVATE_IP" ]; then
+        echo "Private IP: $PRIVATE_IP"
+        break
+      fi
+      sleep 2
+    done
+
+    if [ -z "$PRIVATE_IP" ]; then
+      echo "ERROR: Private interface never got an IP address."
+      ip -br addr show
+      exit 1
+    fi
+
     # Install K3s
     export INSTALL_K3S_VERSION="${k3s_version}"
     K3S_URL="https://${master_ip}:6443"
