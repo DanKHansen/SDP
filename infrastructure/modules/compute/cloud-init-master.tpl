@@ -142,8 +142,26 @@ runcmd:
     done
     sleep 3
 
-    # Detect private interface (the one with 10.x.x.x address)
-    PRIVATE_IFACE=$(ip -br addr show | grep " 10\." | awk '{print $1}')
+    # Detect private interface with retry + Netplan fallback
+    PRIVATE_IFACE=""
+    for i in $(seq 1 30); do
+      PRIVATE_IFACE=$(ip -br addr show | grep " 10\." | grep -v 'flannel\|cni\|lo' | awk '{print $1}' | head -n1)
+      if [ -n "$PRIVATE_IFACE" ]; then
+        break
+      fi
+
+      # No 10.x.x.x found yet — try writing Netplan config for guessed private interface
+      if [ ! -f /etc/netplan/60-private-network.yaml ]; then
+        GUESS_IFACE=$(ip -br link show | awk '$2 == "UP" && $1 != "lo" && $1 != "eth0" {print $1; exit}')
+        if [ -n "$GUESS_IFACE" ]; then
+          printf 'network:\n  version: 2\n  renderer: networkd\n  ethernets:\n    %s:\n      dhcp4: true\n' "$GUESS_IFACE" > /etc/netplan/60-private-network.yaml
+          chmod 600 /etc/netplan/60-private-network.yaml
+          netplan apply 2>/dev/null || true
+          systemctl restart systemd-networkd 2>/dev/null || true
+        fi
+      fi
+      sleep 2
+    done
 
     if [ -z "$PRIVATE_IFACE" ]; then
       echo "ERROR: Could not detect private interface with 10.x.x.x address."
@@ -152,6 +170,11 @@ runcmd:
     fi
 
     echo "Detected private interface: $PRIVATE_IFACE"
+
+    # Ensure Netplan is configured (write again if not already done above)
+    printf 'network:\n  version: 2\n  renderer: networkd\n  ethernets:\n    %s:\n      dhcp4: true\n' "$PRIVATE_IFACE" > /etc/netplan/60-private-network.yaml
+    chmod 600 /etc/netplan/60-private-network.yaml
+    netplan apply 2>/dev/null || true
 
     # Wait for IPv4 address on the private interface
     echo "Waiting for private interface to get IPv4..."
@@ -170,11 +193,6 @@ runcmd:
       ip -br addr show "$PRIVATE_IFACE"
       exit 1
     fi
-
-    # Configure Netplan for private interface
-    printf 'network:\n  version: 2\n  renderer: networkd\n  ethernets:\n    %s:\n      dhcp4: true\n' "$PRIVATE_IFACE" > /etc/netplan/60-private-network.yaml
-    chmod 600 /etc/netplan/60-private-network.yaml
-    netplan apply 2>/dev/null || true
 
     # Get Public IP from local interface (no external dependency)
     PUBLIC_IP=$(ip -br addr show eth0 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
