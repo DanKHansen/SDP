@@ -194,11 +194,11 @@ runcmd:
       exit 1
     fi
 
-    # Get Public IP from local interface (no external dependency)
-    PUBLIC_IP=$(ip -br addr show eth0 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    # Get Public IP (exclude private 10.x.x.x range)
+    PUBLIC_IP=$(hostname -I | tr ' ' '\n' | grep -v '^10\.' | grep -v '^127\.' | head -1)
     if [ -z "$PUBLIC_IP" ]; then
-      echo "ERROR: Could not detect Public IP on eth0."
-      ip -br addr show eth0
+      echo "ERROR: Could not detect Public IP."
+      hostname -I
       exit 1
     fi
     echo "Public IP detected: $PUBLIC_IP"
