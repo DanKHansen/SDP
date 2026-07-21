@@ -178,9 +178,14 @@ runcmd:
 
     # Get Public IP from local interface (no external dependency)
     PUBLIC_IP=$(ip -br addr show eth0 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    if [ -z "$PUBLIC_IP" ]; then
+      echo "ERROR: Could not detect Public IP on eth0."
+      ip -br addr show eth0
+      exit 1
+    fi
     echo "Public IP detected: $PUBLIC_IP"
 
-    # Retry loop for K3s installer download (handles DNS/network race conditions)
+    # Retry loop for K3s installer download
     echo "Downloading K3s installer..."
     CURL_SUCCESS=false
     for attempt in $(seq 1 5); do
@@ -197,9 +202,6 @@ runcmd:
 
     if [ "$CURL_SUCCESS" = false ]; then
       echo "ERROR: Failed to download K3s installer after 5 attempts."
-      echo "Checking network connectivity:"
-      ip route show
-      nslookup get.k3s.io || echo "DNS lookup failed"
       exit 1
     fi
 
@@ -212,7 +214,9 @@ runcmd:
       --cluster-init \
       --advertise-address "$PRIVATE_IP" \
       --tls-san "$PRIVATE_IP" \
+      --node-ip "$PRIVATE_IP" \
       --node-external-ip "$PUBLIC_IP" \
+      --flannel-external-ip \
       --disable traefik \
       --disable-cloud-controller \
       --write-kubeconfig-mode 644 \

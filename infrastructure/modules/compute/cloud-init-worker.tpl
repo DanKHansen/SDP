@@ -99,15 +99,21 @@ runcmd:
 
     # Get Public IP from local interface (no external dependency)
     PUBLIC_IP=$(ip -br addr show eth0 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    if [ -z "$PUBLIC_IP" ]; then
+      echo "ERROR: Could not detect Public IP on eth0."
+      ip -br addr show eth0
+      exit 1
+    fi
     echo "Public IP detected: $PUBLIC_IP"
-    
+
     # Install K3s agent
     echo "Installing K3s agent..."
     if ! /tmp/k3s-install.sh agent \
       --token "$K3S_TOKEN" \
       --server "$K3S_URL" \
       --flannel-iface="$PRIVATE_IFACE" \
-      --node-ip="$PUBLIC_IP" \
+      --node-ip "$PRIVATE_IP" \
+      --node-external-ip "$PUBLIC_IP" \
       --kubelet-arg=cloud-provider=external; then
       echo "ERROR: K3s agent installation failed."
       exit 1
