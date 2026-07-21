@@ -232,8 +232,8 @@ runcmd:
       --cluster-init \
       --advertise-address "$PRIVATE_IP" \
       --tls-san "$PRIVATE_IP" \
-      --node-ip "$PRIVATE_IP" \
-      --node-external-ip "$PUBLIC_IP" \
+      --node-ip "$PUBLIC_IP" \
+      # --node-external-ip "$PUBLIC_IP" \
       --flannel-external-ip \
       --disable traefik \
       --disable-cloud-controller \

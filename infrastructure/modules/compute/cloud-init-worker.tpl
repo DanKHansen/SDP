@@ -130,8 +130,8 @@ runcmd:
       --token "$K3S_TOKEN" \
       --server "$K3S_URL" \
       --flannel-iface="$PRIVATE_IFACE" \
-      --node-ip "$PRIVATE_IP" \
-      --node-external-ip "$PUBLIC_IP" \
+      --node-ip "$PUBLIC_IP" \
+      # --node-external-ip "$PUBLIC_IP" \
       --kubelet-arg=cloud-provider=external; then
       echo "ERROR: K3s agent installation failed."
       exit 1
