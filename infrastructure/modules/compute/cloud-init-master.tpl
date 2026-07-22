@@ -1,3 +1,10 @@
+# --- K3s Server Flags (MASTER ONLY) ---
+# --flannel-external-ip: SERVER ONLY — invalid on agent
+# --node-external-ip: Valid on both server and agent
+# --flannel-iface: Valid on both
+# --node-ip: Valid on both
+# --kubelet-arg=cloud-provider=external: Valid on both
+
 #cloud-config
 packages:
   - curl
