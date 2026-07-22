@@ -103,8 +103,6 @@ write_files:
           repoURL: https://github.com/DanKHansen/SDP.git
           targetRevision: main
           path: apps/environments/dev
-          directory:
-            recurse: true
         destination:
           server: https://kubernetes.default.svc
           namespace: argocd

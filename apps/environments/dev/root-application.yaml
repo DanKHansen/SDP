@@ -6,11 +6,9 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/dkh-dataengineering/sdp-golden-master.git  # Placeholder — update when repo is public/private
+    repoURL: https://github.com/DanKHansen/SDP.git  # Placeholder — update when repo is public/private
     targetRevision: main
     path: apps/environments/dev
-    directory:
-      recurse: true
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
