@@ -89,40 +89,29 @@ write_files:
           applicationSet:
             replicas: 1
 
-  - path: /var/lib/rancher/k3s/server/manifests/03-longhorn-system-namespace.yaml
+  - path: /opt/sdp/root-application.yaml
     permissions: "0644"
     content: |
-      apiVersion: v1
-      kind: Namespace
+      apiVersion: argoproj.io/v1alpha1
+      kind: Application
       metadata:
-        name: longhorn-system
-        labels:
-          pod-security.kubernetes.io/enforce: privileged
-
-  - path: /var/lib/rancher/k3s/server/manifests/04-longhorn.yaml
-    permissions: "0644"
-    content: |
-      apiVersion: helm.cattle.io/v1
-      kind: HelmChart
-      metadata:
-        name: longhorn
-        namespace: kube-system
+        name: sdp-root
+        namespace: argocd
       spec:
-        repo: https://charts.longhorn.io
-        chart: longhorn
-        version: "1.12.0"
-        targetNamespace: longhorn-system
-        valuesContent: |
-          persistence:
-            defaultClass: true
-            defaultClassReplicaCount: 3
-          defaultSettings:
-            defaultDataPath: /var/lib/longhorn
-            replicaSoftAntiAffinity: false
-            storageMinimalAvailablePercentage: 25
-          # CRITICAL: Disable preUpgradeChecker for ArgoCD compatibility
-          preUpgradeChecker:
-            jobEnabled: false
+        project: default
+        source:
+          repoURL: https://github.com/DanKHansen/SDP.git
+          targetRevision: main
+          path: apps/environments/dev
+          directory:
+            recurse: true
+        destination:
+          server: https://kubernetes.default.svc
+          namespace: argocd
+        syncPolicy:
+          automated:
+            prune: true
+            selfHeal: true
 
 runcmd:
   - |
@@ -278,10 +267,28 @@ runcmd:
       sleep 5
     done
 
-    echo "Waiting for Longhorn..."
+    echo "Applying root Application..."
+    for i in $(seq 1 36); do
+      if kubectl apply -f /opt/sdp/root-application.yaml 2>/dev/null; then
+        echo "Root Application applied."
+        break
+      fi
+      sleep 5
+    done
+
+    echo "Waiting for Longhorn (via ArgoCD sync)..."
     for i in $(seq 1 36); do
       if kubectl get pods -n longhorn-system -l app.kubernetes.io/name=longhorn-manager -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
         echo "Longhorn Ready."
+        break
+      fi
+      sleep 5
+    done
+
+    echo "Waiting for NGINX Ingress (via ArgoCD sync)..."
+    for i in $(seq 1 36); do
+      if kubectl get pods -n ingress-nginx -l app.kubernetes.io/component=controller -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
+        echo "NGINX Ingress Ready."
         break
       fi
       sleep 5

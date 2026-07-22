@@ -124,7 +124,7 @@ runcmd:
     fi
     echo "Public IP detected: $PUBLIC_IP"
 
-    # Install K3s agent
+    # Install K3s agent (with --flannel-external-ip for Hetzner CCM compatibility)
     echo "Installing K3s agent..."
     if ! /tmp/k3s-install.sh agent \
       --token "$K3S_TOKEN" \
@@ -132,6 +132,7 @@ runcmd:
       --flannel-iface="$PRIVATE_IFACE" \
       --node-ip "$PUBLIC_IP" \
       --node-external-ip "$PUBLIC_IP" \
+      --flannel-external-ip \
       --kubelet-arg=cloud-provider=external; then
       echo "ERROR: K3s agent installation failed."
       exit 1
