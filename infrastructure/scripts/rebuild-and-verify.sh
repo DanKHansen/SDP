@@ -14,8 +14,27 @@ TF_VARS="dev.tfvars"
 # Priority list of Hetzner locations
 LOCATIONS=("nbg1" "hel1" "fsn1")
 
+# State tracking
+APPLY_SUCCESS=false
+LAST_ATTEMPTED=""
+
 echo -e "${YELLOW}🔄 SDP Rebuild & Verify Cycle (Production-Ready)${NC}"
 echo "Working directory: $ENV_DIR"
+
+# Cleanup function — destroys orphaned resources on failure
+cleanup() {
+    local exit_code=$?
+    if [[ "$APPLY_SUCCESS" != "true" && -n "$LAST_ATTEMPTED" ]]; then
+        echo ""
+        echo -e "${YELLOW}🧹 Cleanup triggered — destroying orphaned resources in $LAST_ATTEMPTED...${NC}"
+        (cd "$ENV_DIR" && tofu destroy -var-file="$TF_VARS" -var="location=$LAST_ATTEMPTED" -auto-approve) || {
+            echo -e "${RED}⚠️  Cleanup failed. Manual intervention required:${NC}"
+            echo "   tofu -chdir=$ENV_DIR destroy -var-file=$TF_VARS -var='location=$LAST_ATTEMPTED'"
+        }
+    fi
+    exit $exit_code
+}
+trap cleanup EXIT ERR INT TERM
 
 # 1. Initial Destroy (with confirmation if not in CI)
 if [[ "${CI:-}" != "true" && "${FORCE_DESTROY:-}" != "1" ]]; then
@@ -26,28 +45,22 @@ fi
 echo -e "${YELLOW}🗑️  Destroying any existing infrastructure...${NC}"
 (cd "$ENV_DIR" && tofu destroy -var-file="$TF_VARS" -auto-approve) || true
 
-APPLY_SUCCESS=false
-LAST_LOCATION=""
-
 # 2. Apply with Automatic Location Failover
 for LOCATION in "${LOCATIONS[@]}"; do
+    LAST_ATTEMPTED="$LOCATION"
     echo -e "${YELLOW}🏗️  Attempting apply in location: $LOCATION...${NC}"
-
-    # Update tfvars temporarily
-    cp "$ENV_DIR/$TF_VARS" "$ENV_DIR/${TF_VARS}.bak"
-    sed -i "s/^location\s*=.*/location = \"$LOCATION\"/" "$ENV_DIR/$TF_VARS"
 
     # CRITICAL: If location changed from previous attempt, force a full destroy
     # to recreate the network and firewall in the new region.
-    if [[ "$LOCATION" != "$LAST_LOCATION" && -n "$LAST_LOCATION" ]]; then
-        echo -e "${YELLOW}⚠️  Location changed from $LAST_LOCATION to $LOCATION. Forcing full destroy to recreate network...${NC}"
-        (cd "$ENV_DIR" && tofu destroy -var-file="$TF_VARS" -auto-approve) || true
+    if [[ "$LOCATION" != "${PREV_LOCATION:-}" && -n "${PREV_LOCATION:-}" ]]; then
+        echo -e "${YELLOW}⚠️  Location changed from ${PREV_LOCATION} to $LOCATION. Forcing full destroy to recreate network...${NC}"
+        (cd "$ENV_DIR" && tofu destroy -var-file="$TF_VARS" -var="location=$PREV_LOCATION" -auto-approve) || true
     fi
-    LAST_LOCATION="$LOCATION"
+    PREV_LOCATION="$LOCATION"
 
-    # Try to apply
+    # Try to apply — override location via CLI var, never mutate dev.tfvars
     echo -e "${YELLOW}🔨 Running tofu apply...${NC}"
-    if (cd "$ENV_DIR" && tofu apply -var-file="$TF_VARS" -auto-approve 2>&1 | tee /tmp/tofu_apply.log); then
+    if (cd "$ENV_DIR" && tofu apply -var-file="$TF_VARS" -var="location=$LOCATION" -auto-approve 2>&1 | tee /tmp/tofu_apply.log); then
         APPLY_SUCCESS=true
         echo -e "${GREEN}✅ Successfully applied in $LOCATION${NC}"
         break
@@ -57,13 +70,10 @@ for LOCATION in "${LOCATIONS[@]}"; do
         # Check for specific capacity or resource_unavailable errors
         if grep -qi "unavailable\|capacity\|insufficient\|cannot move" /tmp/tofu_apply.log; then
             echo -e "${YELLOW}⚠️  Capacity or resource conflict detected. Will try next location.${NC}"
-            # Restore backup (though we overwrite in next loop anyway)
-            mv "$ENV_DIR/${TF_VARS}.bak" "$ENV_DIR/$TF_VARS"
             continue
         else
             echo -e "${RED}💥 Non-recoverable error. Stopping.${NC}"
             cat /tmp/tofu_apply.log
-            mv "$ENV_DIR/${TF_VARS}.bak" "$ENV_DIR/$TF_VARS"
             exit 1
         fi
     fi
@@ -74,7 +84,7 @@ if [[ "$APPLY_SUCCESS" != "true" ]]; then
     exit 1
 fi
 
-# 3. Extract Master IP
+# 3. Extract Master IP (dev.tfvars intact — location is the successful one)
 echo -e "${YELLOW}🔍 Extracting Master IP...${NC}"
 MASTER_IP=$(cd "$ENV_DIR" && tofu output -json server_public_ips | jq -r '.[0]')
 [[ -z "$MASTER_IP" || "$MASTER_IP" == "null" ]] && { echo -e "${RED}❌ Failed to extract Master IP${NC}"; exit 1; }
