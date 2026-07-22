@@ -1,0 +1,32 @@
+name: Validate Cloud-Init Templates
+
+on:
+  push:
+    paths:
+      - 'modules/compute/**'
+  pull_request:
+    paths:
+      - 'modules/compute/**'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check worker template for server-only flags
+        run: |
+          if grep -q "flannel-external-ip" modules/compute/cloud-init-worker.tpl; then
+            echo "::error::--flannel-external-ip is a SERVER-ONLY flag. Remove from cloud-init-worker.tpl"
+            exit 1
+          fi
+          echo "Worker template validated — no server-only flags found."
+
+      - name: Check master template has required flags
+        run: |
+          for flag in "flannel-external-ip" "flannel-iface" "node-external-ip"; do
+            if ! grep -q "$flag" modules/compute/cloud-init-master.tpl; then
+              echo "::warning::Master template missing flag: --$flag"
+            fi
+          done
+          echo "Master template validated."
