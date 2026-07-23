@@ -17,13 +17,16 @@ LOCATIONS=("nbg1" "hel1" "fsn1")
 # State tracking
 APPLY_SUCCESS=false
 LAST_ATTEMPTED=""
+CLEANUP_DONE=false   # <-- NEW: guard against double-execution
 
-echo -e "${YELLOW}🔄 SDP Rebuild & Verify Cycle (Production-Ready)${NC}"
-echo "Working directory: $ENV_DIR"
-
-# Cleanup function — destroys orphaned resources on failure
 cleanup() {
     local exit_code=$?
+    [[ "$CLEANUP_DONE" == "true" ]] && return 0
+    CLEANUP_DONE=true
+
+    # Disable signal traps so Ctrl-C during cleanup doesn't kill the destroy
+    trap - INT TERM
+
     if [[ "$APPLY_SUCCESS" != "true" && -n "$LAST_ATTEMPTED" ]]; then
         echo ""
         echo -e "${YELLOW}🧹 Cleanup triggered — destroying orphaned resources in $LAST_ATTEMPTED...${NC}"
@@ -34,7 +37,8 @@ cleanup() {
     fi
     exit $exit_code
 }
-trap cleanup EXIT ERR INT TERM
+# ERR removed — EXIT catches normal/scripted exits, INT/TERM catch signals
+trap cleanup EXIT INT TERM
 
 # 1. Initial Destroy (with confirmation if not in CI)
 if [[ "${CI:-}" != "true" && "${FORCE_DESTROY:-}" != "1" ]]; then
@@ -93,7 +97,7 @@ echo "Master IP: $MASTER_IP"
 
 # 4. Wait for SSH readiness
 echo -e "${YELLOW}⏳ Waiting for SSH access...${NC}"
-until ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no root@"$MASTER_IP" "echo 'SSH ready'" >/dev/null 2>&1; do
+until ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null root@"$MASTER_IP" "echo 'SSH ready'" >/dev/null 2>&1; do
     sleep 2
 done
 
