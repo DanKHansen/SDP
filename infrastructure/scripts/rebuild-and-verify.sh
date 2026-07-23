@@ -40,12 +40,7 @@ cleanup() {
 # ERR removed — EXIT catches normal/scripted exits, INT/TERM catch signals
 trap cleanup EXIT INT TERM
 
-# 1. Initial Destroy (with confirmation if not in CI)
-if [[ "${CI:-}" != "true" && "${FORCE_DESTROY:-}" != "1" ]]; then
-    read -rp "⚠️  Confirm initial destroy (y/N)? " confirm
-    [[ "$confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 1; }
-fi
-
+# 1. Initial Destroy
 echo -e "${YELLOW}🗑️  Destroying any existing infrastructure...${NC}"
 (cd "$ENV_DIR" && tofu destroy -var-file="$TF_VARS" -auto-approve) || true
 
