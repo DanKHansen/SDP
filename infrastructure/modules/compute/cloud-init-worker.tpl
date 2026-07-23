@@ -132,7 +132,7 @@ runcmd:
     fi
     echo "Public IP detected: $PUBLIC_IP"
 
-    # Install K3s agent (with --flannel-external-ip for Hetzner CCM compatibility)
+    # Install K3s agent 
     echo "Installing K3s agent..."
     if ! /tmp/k3s-install.sh agent \
       --token "$K3S_TOKEN" \
