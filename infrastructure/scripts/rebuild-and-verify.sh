@@ -23,21 +23,43 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Control tofu apply output visibility
 SHOW_APPLY_OUTPUT="$VERBOSE"
 
 # State tracking
-APPLIED=false              # Tracks apply phase success
-APPLY_SUCCESS=false        # Tracks overall cycle success (apply + verify)
+APPLIED=false
+APPLY_SUCCESS=false
 LAST_ATTEMPTED=""
 CLEANUP_DONE=false
+
+# Helper: Aggressively purge ALL Hetzner LoadBalancers with retry
+purge_all_lbs() {
+    echo -e "${YELLOW}🧹 Purging all LoadBalancers (with retry)...${NC}"
+    for RETRY in 1 2 3 4 5; do
+        ORPHAN_LBS=$(hcloud load-balancer list -o no-header -o columns=id 2>/dev/null || echo "")
+        if [[ -z "$ORPHAN_LBS" ]]; then
+            echo -e "   ${GREEN}All LoadBalancers purged.${NC}"
+            return 0
+        fi
+        while IFS= read -r lb_id; do
+            [[ -z "$lb_id" ]] && continue
+            hcloud load-balancer delete "$lb_id" 2>/dev/null || true
+        done <<< "$ORPHAN_LBS"
+        REMAINING=$(hcloud load-balancer list -o no-header -o columns=id 2>/dev/null | wc -l || echo "0")
+        if [[ "$REMAINING" -eq 0 ]]; then
+            echo -e "   ${GREEN}All LoadBalancers purged.${NC}"
+            return 0
+        fi
+        echo -e "   ${YELLOW}Attempt $RETRY: $REMAINING LBs still exist, waiting 10s...${NC}"
+        sleep 10
+    done
+    echo -e "   ${RED}Could not purge all LBs after 5 attempts. Continuing anyway.${NC}"
+}
 
 cleanup() {
     local exit_code=$?
     [[ "$CLEANUP_DONE" == "true" ]] && return 0
     CLEANUP_DONE=true
 
-    # Disable signal traps so Ctrl-C during cleanup doesn't kill the destroy
     trap - INT TERM
 
     if [[ "$APPLY_SUCCESS" != "true" && -n "$LAST_ATTEMPTED" ]]; then
@@ -58,22 +80,36 @@ for LOCATION in "${LOCATIONS[@]}"; do
     LAST_ATTEMPTED="$LOCATION"
     echo -e "${YELLOW}🏗️  Attempting apply in location: $LOCATION...${NC}"
 
-    # CRITICAL: If location changed from previous attempt, force a full destroy
-    # to recreate the network and firewall in the new region.
+    # Location change: aggressive LB purge + state reset + full destroy
     if [[ "$LOCATION" != "${PREV_LOCATION:-}" && -n "${PREV_LOCATION:-}" ]]; then
-        echo -e "${YELLOW}⚠️  Location changed from ${PREV_LOCATION} to $LOCATION. Forcing full destroy to recreate network...${NC}"
-        (cd "$ENV_DIR" && tofu destroy -var-file="$TF_VARS" -var="location=$PREV_LOCATION" -auto-approve) || true
+        echo -e "${YELLOW}⚠️  Location changed from ${PREV_LOCATION} to $LOCATION. Forcing full teardown...${NC}"
+
+        # Purge ALL LBs first (CCM-managed, not in tofu state)
+        # Retry loop because CCM needs time to deregister after node deletion
+        purge_all_lbs
+
+        # Remove stale state to force fresh planning
+        rm -f "$ENV_DIR/.terraform.lock.hcl" "$ENV_DIR/terraform.tfstate.backup" 2>/dev/null || true
+        (cd "$ENV_DIR" && tofu init -reconfigure -input=false >/dev/null 2>&1) || true
+
+        # Force destroy any remaining tofu resources
+        (cd "$ENV_DIR" && tofu destroy -var-file="$TF_VARS" -var="location=$LOCATION" -auto-approve) || true
+
+        # Second LB sweep after destroy (nodes gone, CCM should have deregistered)
+        purge_all_lbs
     fi
     PREV_LOCATION="$LOCATION"
 
-    # Try to apply — override location via CLI var, never mutate dev.tfvars
+    # Apply — override location via CLI var, never mutate dev.tfvars
     echo -e "${YELLOW}🔨 Running tofu apply...${NC}"
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    LOG_FILE="/tmp/tofu_apply_${LOCATION}_${TIMESTAMP}.log"
     set +e
     if [[ "$SHOW_APPLY_OUTPUT" == "true" ]]; then
-        (cd "$ENV_DIR" && tofu apply -var-file="$TF_VARS" -var="location=$LOCATION" -auto-approve 2>&1 | tee /tmp/tofu_apply.log)
+        (cd "$ENV_DIR" && tofu apply -var-file="$TF_VARS" -var="location=$LOCATION" -auto-approve 2>&1 | tee "$LOG_FILE")
     else
-        (cd "$ENV_DIR" && tofu apply -var-file="$TF_VARS" -var="location=$LOCATION" -auto-approve >/tmp/tofu_apply.log 2>&1)
-        echo -e "${YELLOW}📋 Apply output logged to /tmp/tofu_apply.log${NC}"
+        (cd "$ENV_DIR" && tofu apply -var-file="$TF_VARS" -var="location=$LOCATION" -auto-approve >"$LOG_FILE" 2>&1)
+        echo -e "${YELLOW}📋 Apply output logged to $LOG_FILE${NC}"
     fi
     APPLY_RC=$?
     set -e
@@ -85,12 +121,12 @@ for LOCATION in "${LOCATIONS[@]}"; do
     else
         echo -e "${RED}❌ Apply failed in $LOCATION. Checking error...${NC}"
 
-        if grep -qi "unavailable\|capacity\|insufficient\|cannot move" /tmp/tofu_apply.log; then
+        if grep -qi "unavailable\|capacity\|insufficient\|cannot move" "$LOG_FILE"; then
             echo -e "${YELLOW}⚠️  Capacity or resource conflict detected. Will try next location.${NC}"
             continue
         else
             echo -e "${RED}💥 Non-recoverable error. Stopping.${NC}"
-            cat /tmp/tofu_apply.log
+            cat "$LOG_FILE"
             exit 1
         fi
     fi
@@ -101,18 +137,21 @@ if [[ "$APPLIED" != "true" ]]; then
     exit 1
 fi
 
-# 3. Extract Master IP (dev.tfvars intact — location is the successful one)
+# 3. Extract Master IP with state refresh
 echo -e "${YELLOW}🔍 Extracting Master IP...${NC}"
+(cd "$ENV_DIR" && tofu refresh -var-file="$TF_VARS" -auto-approve >/dev/null 2>&1) || true
 MASTER_IP=$(cd "$ENV_DIR" && tofu output -json server_public_ips | jq -r '.[0]')
 [[ -z "$MASTER_IP" || "$MASTER_IP" == "null" ]] && { echo -e "${RED}❌ Failed to extract Master IP${NC}"; exit 1; }
 export MASTER_IP
 echo "Master IP: $MASTER_IP"
 
-# 4. Wait for SSH readiness
+# 4. Wait for SSH readiness + buffer for cloud-init
 echo -e "${YELLOW}⏳ Waiting for SSH access...${NC}"
 until ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null root@"$MASTER_IP" "echo 'SSH ready'" >/dev/null 2>&1; do
     sleep 2
 done
+# Buffer: cloud-init runcmd may still be executing K3s installation
+sleep 10
 
 # 5. Run verification
 echo -e "${GREEN}✅ Running verification...${NC}"

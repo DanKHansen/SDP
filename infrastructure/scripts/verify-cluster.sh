@@ -41,39 +41,45 @@ while ! ssh_cmd "kubectl get nodes >/dev/null 2>&1"; do
 done
 echo -e "\n${GREEN}✅ K3s cluster is responsive.${NC}"
 
-# 3. Wait for Nodes to be Ready (Individual Check)
+# 3. Wait for Nodes to be Ready (Individual Check) — FIXED: Verify nodes exist first
 echo -e "${YELLOW}⏳ Waiting for all nodes to reach Ready status...${NC}"
 MAX_WAIT=420
 COUNT=0
 ALL_READY=false
+EXPECTED_NODES="${EXPECTED_NODES:-3}"
 
 while [ "$COUNT" -lt "$MAX_WAIT" ]; do
     NODE_STATUS=$(ssh_cmd "kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}:{.status.conditions[?(@.type==\"Ready\")].status}{\"\\n\"}{end}'" 2>/dev/null || echo "")
 
-    if echo "$NODE_STATUS" | grep -q ":False\|:Unknown"; then
-        echo -n "."
-        sleep 5
-        COUNT=$((COUNT+5))
-    else
+    # Count actual nodes returned
+    NODE_COUNT=$(echo "$NODE_STATUS" | grep -c ":" || echo "0")
+
+    # Both conditions: enough nodes AND all ready
+    if [ "$NODE_COUNT" -ge "$EXPECTED_NODES" ] && ! echo "$NODE_STATUS" | grep -q ":False\|:Unknown"; then
         ALL_READY=true
         break
     fi
+
+    echo -n "."
+    sleep 5
+    COUNT=$((COUNT+5))
 done
 
 if [ "$ALL_READY" = true ]; then
-    echo -e "\n${GREEN}✅ All nodes are Ready.${NC}"
+    echo -e "\n${GREEN}✅ All nodes are Ready (${NODE_COUNT}/${EXPECTED_NODES}).${NC}"
 else
     echo -e "\n${RED}❌ Timeout waiting for nodes to be Ready.${NC}"
     ssh_cmd "kubectl get nodes" || true
     exit 1
 fi
 
-# 4. Verify Hetzner CCM (With Retry Loop)
+# 4. Verify Hetzner CCM (With Retry Loop) — FIXED: Dynamic replica check
 echo -e "${YELLOW}⏳ Checking Hetzner Cloud Controller Manager...${NC}"
 CCM_READY=false
 for _ in $(seq 1 60); do
-    STATUS=$(ssh_cmd "kubectl get deployment hcloud-cloud-controller-manager -n kube-system -o jsonpath='{.status.availableReplicas}' 2>/dev/null" || echo "")
-    if [ "$STATUS" == "1" ]; then
+    DESIRED=$(ssh_cmd "kubectl get deployment hcloud-cloud-controller-manager -n kube-system -o jsonpath='{.spec.replicas}' 2>/dev/null" || echo "0")
+    AVAILABLE=$(ssh_cmd "kubectl get deployment hcloud-cloud-controller-manager -n kube-system -o jsonpath='{.status.availableReplicas}' 2>/dev/null" || echo "0")
+    if [ "$DESIRED" != "0" ] && [ "$AVAILABLE" == "$DESIRED" ]; then
         CCM_READY=true
         break
     fi
@@ -82,19 +88,21 @@ for _ in $(seq 1 60); do
 done
 
 if [ "$CCM_READY" = true ]; then
-    echo -e "\n${GREEN}✅ Hetzner CCM is running.${NC}"
+    echo -e "\n${GREEN}✅ Hetzner CCM is running (${DESIRED}/${DESIRED}).${NC}"
 else
     echo -e "\n${RED}❌ Timeout waiting for Hetzner CCM.${NC}"
     ssh_cmd "kubectl describe deployment hcloud-cloud-controller-manager -n kube-system" || true
     exit 1
 fi
 
-# 5. Verify ArgoCD (With Retry Loop)
+# 5. Verify ArgoCD (With Retry Loop) — FIXED: Combined SSH calls
 echo -e "${YELLOW}⏳ Checking ArgoCD Server...${NC}"
 ARGOCD_READY=false
 for _ in $(seq 1 60); do
-    STATUS=$(ssh_cmd "kubectl get deployment argocd-server -n argocd -o jsonpath='{.status.availableReplicas}' 2>/dev/null" || echo "")
-    if [ "$STATUS" == "1" ]; then
+    COMBINED=$(ssh_cmd "kubectl get deployment argocd-server -n argocd -o jsonpath='{.spec.replicas}:{.status.availableReplicas}'" 2>/dev/null || echo "")
+    DESIRED="${COMBINED%%:*}"
+    AVAILABLE="${COMBINED##*:}"
+    if [ "$DESIRED" != "0" ] && [ "$AVAILABLE" == "$DESIRED" ]; then
         ARGOCD_READY=true
         break
     fi
@@ -103,7 +111,7 @@ for _ in $(seq 1 60); do
 done
 
 if [ "$ARGOCD_READY" = true ]; then
-    echo -e "\n${GREEN}✅ ArgoCD Server is running.${NC}"
+    echo -e "\n${GREEN}✅ ArgoCD Server is running (${DESIRED}/${DESIRED}).${NC}"
 else
     echo -e "\n${RED}❌ Timeout waiting for ArgoCD Server.${NC}"
     ssh_cmd "kubectl get pods -n argocd" || true
@@ -111,12 +119,13 @@ else
     exit 1
 fi
 
-# 6. Verify ArgoCD Root Application Sync
+# 6. Verify ArgoCD Root Application Sync — FIXED: Combined SSH call
 echo -e "${YELLOW}⏳ Checking ArgoCD Root Application sync status...${NC}"
 ARGOCD_APP_SYNCED=false
 for _ in $(seq 1 60); do
-    SYNC_STATUS=$(ssh_cmd "kubectl get application sdp-root -n argocd -o jsonpath='{.status.sync.status}' 2>/dev/null" || echo "")
-    HEALTH_STATUS=$(ssh_cmd "kubectl get application sdp-root -n argocd -o jsonpath='{.status.health.status}' 2>/dev/null" || echo "")
+    COMBINED=$(ssh_cmd "kubectl get application sdp-root -n argocd -o jsonpath='{.status.sync.status}:{.status.health.status}'" 2>/dev/null || echo "")
+    SYNC_STATUS="${COMBINED%%:*}"
+    HEALTH_STATUS="${COMBINED##*:}"
     if [ "$SYNC_STATUS" == "Synced" ] && [ "$HEALTH_STATUS" == "Healthy" ]; then
         ARGOCD_APP_SYNCED=true
         break
@@ -133,12 +142,13 @@ else
     exit 1
 fi
 
-# 7. Verify Longhorn (Increased timeout — ArgoCD sync adds delay)
+# 7. Verify Longhorn (Dynamic check) — FIXED: Dynamic node count comparison
 echo -e "${YELLOW}⏳ Checking Longhorn Manager...${NC}"
 LONGHORN_READY=false
 for _ in $(seq 1 120); do
-    STATUS=$(ssh_cmd "kubectl get daemonset longhorn-manager -n longhorn-system -o jsonpath='{.status.numberReady}/{.status.desiredNumberScheduled}' 2>/dev/null" || echo "")
-    if [ "$STATUS" == "3/3" ]; then
+    DESIRED=$(ssh_cmd "kubectl get daemonset longhorn-manager -n longhorn-system -o jsonpath='{.status.desiredNumberScheduled}' 2>/dev/null" || echo "0")
+    READY=$(ssh_cmd "kubectl get daemonset longhorn-manager -n longhorn-system -o jsonpath='{.status.numberReady}' 2>/dev/null" || echo "0")
+    if [ "$READY" == "$DESIRED" ] && [ "$DESIRED" != "0" ]; then
         LONGHORN_READY=true
         break
     fi
@@ -147,7 +157,7 @@ for _ in $(seq 1 120); do
 done
 
 if [ "$LONGHORN_READY" = true ]; then
-    echo -e "\n${GREEN}✅ Longhorn Manager is running (3/3).${NC}"
+    echo -e "\n${GREEN}✅ Longhorn Manager is running (${READY}/${DESIRED}).${NC}"
 else
     echo -e "\n${RED}❌ Timeout waiting for Longhorn Manager.${NC}"
     ssh_cmd "kubectl get pods -n longhorn-system" || true
@@ -155,12 +165,14 @@ else
     exit 1
 fi
 
-# 8. Verify NGINX Ingress Controller
+# 8. Verify NGINX Ingress Controller (Dynamic check) — FIXED: Compare desired vs available
 echo -e "${YELLOW}⏳ Checking NGINX Ingress Controller...${NC}"
 NGINX_READY=false
 for _ in $(seq 1 120); do
-    STATUS=$(ssh_cmd "kubectl get deployment ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.availableReplicas}' 2>/dev/null" || echo "")
-    if [ "$STATUS" == "2" ]; then
+    COMBINED=$(ssh_cmd "kubectl get deployment ingress-nginx-controller -n ingress-nginx -o jsonpath='{.spec.replicas}:{.status.availableReplicas}'" 2>/dev/null || echo "")
+    DESIRED="${COMBINED%%:*}"
+    AVAILABLE="${COMBINED##*:}"
+    if [ "$DESIRED" != "0" ] && [ "$AVAILABLE" == "$DESIRED" ]; then
         NGINX_READY=true
         break
     fi
@@ -169,7 +181,7 @@ for _ in $(seq 1 120); do
 done
 
 if [ "$NGINX_READY" = true ]; then
-    echo -e "\n${GREEN}✅ NGINX Ingress Controller is running (2/2).${NC}"
+    echo -e "\n${GREEN}✅ NGINX Ingress Controller is running (${AVAILABLE}/${DESIRED}).${NC}"
 else
     echo -e "\n${RED}❌ Timeout waiting for NGINX Ingress Controller.${NC}"
     ssh_cmd "kubectl get pods -n ingress-nginx" || true
