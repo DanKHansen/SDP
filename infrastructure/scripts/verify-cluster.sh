@@ -111,7 +111,7 @@ else
     exit 1
 fi
 
-# 6. Verify ArgoCD Root Application Sync (NEW)
+# 6. Verify ArgoCD Root Application Sync
 echo -e "${YELLOW}⏳ Checking ArgoCD Root Application sync status...${NC}"
 ARGOCD_APP_SYNCED=false
 for _ in $(seq 1 60); do
@@ -155,7 +155,7 @@ else
     exit 1
 fi
 
-# 8. Verify NGINX Ingress Controller (NEW)
+# 8. Verify NGINX Ingress Controller
 echo -e "${YELLOW}⏳ Checking NGINX Ingress Controller...${NC}"
 NGINX_READY=false
 for _ in $(seq 1 120); do
@@ -177,7 +177,7 @@ else
     exit 1
 fi
 
-# 9. Verify NGINX LoadBalancer has External IP (NEW)
+# 9. Verify NGINX LoadBalancer has External IP
 echo -e "${YELLOW}⏳ Checking NGINX LoadBalancer External IP...${NC}"
 LB_READY=false
 for _ in $(seq 1 60); do

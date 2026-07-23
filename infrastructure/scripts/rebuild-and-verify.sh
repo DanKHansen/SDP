@@ -14,10 +14,22 @@ TF_VARS="dev.tfvars"
 # Priority list of Hetzner locations
 LOCATIONS=("nbg1" "hel1" "fsn1")
 
+# Parse arguments
+VERBOSE=false
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -v|--verbose) VERBOSE=true; shift ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
+    esac
+done
+
+# Control tofu apply output visibility
+SHOW_APPLY_OUTPUT="$VERBOSE"
+
 # State tracking
 APPLY_SUCCESS=false
 LAST_ATTEMPTED=""
-CLEANUP_DONE=false   # <-- NEW: guard against double-execution
+CLEANUP_DONE=false
 
 cleanup() {
     local exit_code=$?
@@ -37,7 +49,6 @@ cleanup() {
     fi
     exit $exit_code
 }
-# ERR removed — EXIT catches normal/scripted exits, INT/TERM catch signals
 trap cleanup EXIT INT TERM
 
 # 1. Initial Destroy
@@ -59,14 +70,23 @@ for LOCATION in "${LOCATIONS[@]}"; do
 
     # Try to apply — override location via CLI var, never mutate dev.tfvars
     echo -e "${YELLOW}🔨 Running tofu apply...${NC}"
-    if (cd "$ENV_DIR" && tofu apply -var-file="$TF_VARS" -var="location=$LOCATION" -auto-approve 2>&1 | tee /tmp/tofu_apply.log); then
+    set +e
+    if [[ "$SHOW_APPLY_OUTPUT" == "true" ]]; then
+        (cd "$ENV_DIR" && tofu apply -var-file="$TF_VARS" -var="location=$LOCATION" -auto-approve 2>&1 | tee /tmp/tofu_apply.log)
+    else
+        (cd "$ENV_DIR" && tofu apply -var-file="$TF_VARS" -var="location=$LOCATION" -auto-approve >/tmp/tofu_apply.log 2>&1)
+        echo -e "${YELLOW}📋 Apply output logged to /tmp/tofu_apply.log${NC}"
+    fi
+    APPLY_RC=$?
+    set -e
+
+    if [[ "$APPLY_RC" -eq 0 ]]; then
         APPLY_SUCCESS=true
         echo -e "${GREEN}✅ Successfully applied in $LOCATION${NC}"
         break
     else
         echo -e "${RED}❌ Apply failed in $LOCATION. Checking error...${NC}"
 
-        # Check for specific capacity or resource_unavailable errors
         if grep -qi "unavailable\|capacity\|insufficient\|cannot move" /tmp/tofu_apply.log; then
             echo -e "${YELLOW}⚠️  Capacity or resource conflict detected. Will try next location.${NC}"
             continue
