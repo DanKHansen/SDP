@@ -231,6 +231,7 @@ runcmd:
       --node-external-ip "$PUBLIC_IP" \
       --flannel-external-ip \
       --disable traefik \
+      --disable servicelb \
       --disable-cloud-controller \
       --write-kubeconfig-mode 644 \
       --flannel-iface="$PRIVATE_IFACE"; then
