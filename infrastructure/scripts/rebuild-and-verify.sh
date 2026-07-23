@@ -27,7 +27,8 @@ done
 SHOW_APPLY_OUTPUT="$VERBOSE"
 
 # State tracking
-APPLY_SUCCESS=false
+APPLIED=false              # Tracks apply phase success
+APPLY_SUCCESS=false        # Tracks overall cycle success (apply + verify)
 LAST_ATTEMPTED=""
 CLEANUP_DONE=false
 
@@ -81,7 +82,7 @@ for LOCATION in "${LOCATIONS[@]}"; do
     set -e
 
     if [[ "$APPLY_RC" -eq 0 ]]; then
-        APPLY_SUCCESS=true
+        APPLIED=true
         echo -e "${GREEN}✅ Successfully applied in $LOCATION${NC}"
         break
     else
@@ -98,7 +99,7 @@ for LOCATION in "${LOCATIONS[@]}"; do
     fi
 done
 
-if [[ "$APPLY_SUCCESS" != "true" ]]; then
+if [[ "$APPLIED" != "true" ]]; then
     echo -e "${RED}💥 All locations exhausted. Deployment failed.${NC}"
     exit 1
 fi
@@ -118,6 +119,15 @@ done
 
 # 5. Run verification
 echo -e "${GREEN}✅ Running verification...${NC}"
+set +e
 "$SCRIPT_DIR/verify-cluster.sh"
+VERIFY_RC=$?
+set -e
 
-echo -e "${GREEN}🎉 Rebuild cycle complete.${NC}"
+if [[ "$VERIFY_RC" -eq 0 ]]; then
+    APPLY_SUCCESS=true
+    echo -e "${GREEN}🎉 Rebuild cycle complete.${NC}"
+else
+    echo -e "${RED}❌ Verification failed. Check logs.${NC}"
+    exit 1
+fi
