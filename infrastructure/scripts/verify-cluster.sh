@@ -39,8 +39,7 @@ while ! ssh_cmd "kubectl get nodes >/dev/null 2>&1"; do
         exit 1
     fi
 done
-echo -e "${GREEN}✅ K3s cluster is responsive.${NC}"
-echo ""
+echo -e "\n${GREEN}✅ K3s cluster is responsive.${NC}"
 
 # 3. Wait for Nodes to be Ready (Individual Check)
 echo -e "${YELLOW}⏳ Waiting for all nodes to reach Ready status...${NC}"
@@ -62,13 +61,12 @@ while [ "$COUNT" -lt "$MAX_WAIT" ]; do
 done
 
 if [ "$ALL_READY" = true ]; then
-    echo -e "${GREEN}✅ All nodes are Ready.${NC}"
+    echo -e "\n${GREEN}✅ All nodes are Ready.${NC}"
 else
     echo -e "\n${RED}❌ Timeout waiting for nodes to be Ready.${NC}"
     ssh_cmd "kubectl get nodes" || true
     exit 1
 fi
-echo ""
 
 # 4. Verify Hetzner CCM (With Retry Loop)
 echo -e "${YELLOW}⏳ Checking Hetzner Cloud Controller Manager...${NC}"
@@ -84,13 +82,12 @@ for _ in $(seq 1 60); do
 done
 
 if [ "$CCM_READY" = true ]; then
-    echo -e "${GREEN}✅ Hetzner CCM is running.${NC}"
+    echo -e "\n${GREEN}✅ Hetzner CCM is running.${NC}"
 else
     echo -e "\n${RED}❌ Timeout waiting for Hetzner CCM.${NC}"
     ssh_cmd "kubectl describe deployment hcloud-cloud-controller-manager -n kube-system" || true
     exit 1
 fi
-echo ""
 
 # 5. Verify ArgoCD (With Retry Loop)
 echo -e "${YELLOW}⏳ Checking ArgoCD Server...${NC}"
@@ -106,14 +103,13 @@ for _ in $(seq 1 60); do
 done
 
 if [ "$ARGOCD_READY" = true ]; then
-    echo -e "${GREEN}✅ ArgoCD Server is running.${NC}"
+    echo -e "\n${GREEN}✅ ArgoCD Server is running.${NC}"
 else
     echo -e "\n${RED}❌ Timeout waiting for ArgoCD Server.${NC}"
     ssh_cmd "kubectl get pods -n argocd" || true
     ssh_cmd "kubectl describe deployment argocd-server -n argocd" || true
     exit 1
 fi
-echo ""
 
 # 6. Verify ArgoCD Root Application Sync
 echo -e "${YELLOW}⏳ Checking ArgoCD Root Application sync status...${NC}"
@@ -130,13 +126,12 @@ for _ in $(seq 1 60); do
 done
 
 if [ "$ARGOCD_APP_SYNCED" = true ]; then
-    echo -e "${GREEN}✅ ArgoCD Root Application is Synced and Healthy.${NC}"
+    echo -e "\n${GREEN}✅ ArgoCD Root Application is Synced and Healthy.${NC}"
 else
     echo -e "\n${RED}❌ Timeout waiting for ArgoCD Root Application sync.${NC}"
     ssh_cmd "kubectl get application sdp-root -n argocd -o yaml" || true
     exit 1
 fi
-echo ""
 
 # 7. Verify Longhorn (Increased timeout — ArgoCD sync adds delay)
 echo -e "${YELLOW}⏳ Checking Longhorn Manager...${NC}"
@@ -152,14 +147,13 @@ for _ in $(seq 1 120); do
 done
 
 if [ "$LONGHORN_READY" = true ]; then
-    echo -e "${GREEN}✅ Longhorn Manager is running (3/3).${NC}"
+    echo -e "\n${GREEN}✅ Longhorn Manager is running (3/3).${NC}"
 else
     echo -e "\n${RED}❌ Timeout waiting for Longhorn Manager.${NC}"
     ssh_cmd "kubectl get pods -n longhorn-system" || true
     ssh_cmd "kubectl describe daemonset longhorn-manager -n longhorn-system" || true
     exit 1
 fi
-echo ""
 
 # 8. Verify NGINX Ingress Controller
 echo -e "${YELLOW}⏳ Checking NGINX Ingress Controller...${NC}"
@@ -175,14 +169,13 @@ for _ in $(seq 1 120); do
 done
 
 if [ "$NGINX_READY" = true ]; then
-    echo -e "${GREEN}✅ NGINX Ingress Controller is running (2/2).${NC}"
+    echo -e "\n${GREEN}✅ NGINX Ingress Controller is running (2/2).${NC}"
 else
     echo -e "\n${RED}❌ Timeout waiting for NGINX Ingress Controller.${NC}"
     ssh_cmd "kubectl get pods -n ingress-nginx" || true
     ssh_cmd "kubectl describe deployment ingress-nginx-controller -n ingress-nginx" || true
     exit 1
 fi
-echo ""
 
 # 9. Verify NGINX LoadBalancer has External IP
 echo -e "${YELLOW}⏳ Checking NGINX LoadBalancer External IP...${NC}"
@@ -198,7 +191,7 @@ for _ in $(seq 1 60); do
 done
 
 if [ "$LB_READY" = true ]; then
-    echo -e "${GREEN}✅ NGINX LoadBalancer is accessible at $LB_IP${NC}"
+    echo -e "\n${GREEN}✅ NGINX LoadBalancer is accessible at $LB_IP${NC}"
 else
     echo -e "\n${RED}❌ Timeout waiting for LoadBalancer External IP.${NC}"
     ssh_cmd "kubectl get svc -n ingress-nginx" || true

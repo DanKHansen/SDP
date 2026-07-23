@@ -52,19 +52,9 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# 1. Initial Destroy
+# 1. Initial Destroy via clean-all.sh
 echo -e "${YELLOW}🗑️  Destroying any existing infrastructure...${NC}"
-(cd "$ENV_DIR" && tofu destroy -var-file="$TF_VARS" -auto-approve) || true
-
-# 1b. Clean up orphaned Hetzner Load Balancers (created by CCM, not tracked by tofu)
-ORPHAN_LBS=$(hcloud load-balancer list -o no-header -o columns=id 2>/dev/null || echo "")
-if [[ -n "$ORPHAN_LBS" ]]; then
-    echo -e "${YELLOW}🧹 Removing orphaned Load Balancers...${NC}"
-    while IFS= read -r lb_id; do
-        [[ -z "$lb_id" ]] && continue
-        hcloud load-balancer delete "$lb_id" && echo -e "   Deleted LB $lb_id"
-    done <<< "$ORPHAN_LBS"
-fi
+"$SCRIPT_DIR/clean-all.sh"
 
 # 2. Apply with Automatic Location Failover
 for LOCATION in "${LOCATIONS[@]}"; do
@@ -96,7 +86,7 @@ for LOCATION in "${LOCATIONS[@]}"; do
         echo -e "${GREEN}✅ Successfully applied in $LOCATION${NC}"
         break
     else
-        echo -te "${RED}❌ Apply failed in $LOCATION. Checking error...${NC}"
+        echo -e "${RED}❌ Apply failed in $LOCATION. Checking error...${NC}"
 
         if grep -qi "unavailable\|capacity\|insufficient\|cannot move" /tmp/tofu_apply.log; then
             echo -e "${YELLOW}⚠️  Capacity or resource conflict detected. Will try next location.${NC}"
