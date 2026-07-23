@@ -17,13 +17,13 @@ if [ -z "$MASTER_IP" ]; then
 fi
 
 # Clear stale SSH keys for this IP
-ssh-keygen -R "$MASTER_IP" 2>/dev/null || true
+ssh-keygen -R "$MASTER_IP" &>/dev/null || true
 
 echo "Targeting Master: $MASTER_IP"
 
 # Helper function for SSH
 ssh_cmd() {
-    ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@"$MASTER_IP" "$1"
+    ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o LogLevel=ERROR root@"$MASTER_IP" "$1"
 }
 
 # 2. Wait for K3s to be ready (kubectl accessible)
