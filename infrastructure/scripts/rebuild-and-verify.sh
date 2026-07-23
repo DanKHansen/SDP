@@ -42,11 +42,8 @@ cleanup() {
 
     if [[ "$APPLY_SUCCESS" != "true" && -n "$LAST_ATTEMPTED" ]]; then
         echo ""
-        echo -e "${YELLOW}🧹 Cleanup triggered — destroying orphaned resources in $LAST_ATTEMPTED...${NC}"
-        (cd "$ENV_DIR" && tofu destroy -var-file="$TF_VARS" -var="location=$LAST_ATTEMPTED" -auto-approve) || {
-            echo -e "${RED}⚠️  Cleanup failed. Manual intervention required:${NC}"
-            echo "   tofu -chdir=$ENV_DIR destroy -var-file=$TF_VARS -var='location=$LAST_ATTEMPTED'"
-        }
+        echo -e "${YELLOW}🧹 Cleanup triggered — full teardown...${NC}"
+        "$SCRIPT_DIR/clean-all.sh"
     fi
     exit $exit_code
 }
