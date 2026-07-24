@@ -142,6 +142,20 @@ else
     exit 1
 fi
 
+# 6a. Early Checkpoint: Verify ingress-nginx namespace has content — NEW DIAGNOSTIC CHECKPOINT
+echo -e "${YELLOW}⏳ Checking ingress-nginx namespace has deployments...${NC}"
+INGRESS_PODS=$(ssh_cmd "kubectl get pods -n ingress-nginx --no-headers 2>/dev/null | wc -l" || echo "0")
+if [ "$INGRESS_PODS" -eq 0 ]; then
+    echo -e "\n${RED}❌ No pods in ingress-nginx namespace (deployment may have failed)${NC}"
+    echo -e "${YELLOW}📋 Diagnostic dump:${NC}"
+    ssh_cmd "echo '=== ArgoCD Applications ==='; kubectl get applications -A 2>&1; echo '---'; \
+             echo '=== ingreess-nginx namespace resources ==='; kubectl get all -n ingress-nginx 2>&1; echo '---'; \
+             echo '=== ArgoCD Root Application Status ==='; kubectl describe application -n argocd sdp-root 2>&1 | tail -30" || true
+    exit 1
+else
+    echo -e "${GREEN}✅ Found $INGRESS_PODS pod(s) in ingress-nginx namespace${NC}"
+fi
+
 # 7. Verify Longhorn (Dynamic check) — FIXED: Dynamic node count comparison
 echo -e "${YELLOW}⏳ Checking Longhorn Manager...${NC}"
 LONGHORN_READY=false
