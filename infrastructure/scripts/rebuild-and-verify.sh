@@ -33,7 +33,7 @@ purge_all_lbs() {
     echo -e "${YELLOW}🧹 Purging all LoadBalancers (phase: $phase)...${NC}"
 
     for RETRY in 1 2 3 4 5; do
-        ORPHAN_LBS=$(hcloud load-balancer list -o no-header -o columns=id,name 2>/dev/null || echo "")
+        ORPHAN_LBS=$(hcloud load-balancer list -o noheader -o columns=id,name 2>/dev/null || echo "")
 
         if [[ -z "$ORPHAN_LBS" ]]; then
             echo -e "   ${GREEN}No LoadBalancers found.${NC}"
@@ -61,7 +61,7 @@ purge_all_lbs() {
             fi
         done <<< "$ORPHAN_LBS"
 
-        REMAINING=$(hcloud load-balancer list -o no-header -o columns=id 2>/dev/null | wc -l || echo "0")
+        REMAINING=$(hcloud load-balancer list -o noheader -o columns=id 2>/dev/null | wc -l || echo "0")
 
         if [[ "$REMAINING" -eq 0 ]]; then
             echo -e "   ${GREEN}All LoadBalancers purged ($deleted_count deleted).${NC}"

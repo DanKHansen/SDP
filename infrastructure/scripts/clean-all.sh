@@ -25,7 +25,7 @@ purge_lbs() {
     local label="$1"
     echo -e "${YELLOW}🧹 Removing all LoadBalancers ($label)...${NC}"
     for RETRY in 1 2 3 4 5; do
-        ORPHAN_LBS=$(hcloud load-balancer list -o no-header -o columns=id,name 2>/dev/null || echo "")
+        ORPHAN_LBS=$(hcloud load-balancer list -o noheader -o columns=id,name 2>/dev/null || echo "")
         if [[ -z "$ORPHAN_LBS" ]]; then
             echo "   No LoadBalancers found."
             return 0
