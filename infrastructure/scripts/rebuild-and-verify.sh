@@ -21,6 +21,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 SHOW_APPLY_OUTPUT="$VERBOSE"
+CLEAN_FLAGS=""
+[[ "$VERBOSE" == "true" ]] && CLEAN_FLAGS="-v"
 
 APPLIED=false
 APPLY_SUCCESS=false
@@ -86,7 +88,7 @@ cleanup() {
     if [[ "$APPLY_SUCCESS" != "true" && -n "$LAST_ATTEMPTED" ]]; then
         echo ""
         echo -e "${YELLOW}🧹 Cleanup triggered — full teardown...${NC}"
-        "$SCRIPT_DIR/clean-all.sh"
+        "$SCRIPT_DIR/clean-all.sh" $CLEAN_FLAGS
     fi
     exit $exit_code
 }
@@ -97,7 +99,7 @@ echo -e "${YELLOW}🗑️  Initial LB purge before infrastructure reset...${NC}"
 purge_all_lbs "pre-build"
 
 # 2. Destroy existing tofu-managed infrastructure
-"$SCRIPT_DIR/clean-all.sh"
+"$SCRIPT_DIR/clean-all.sh" $CLEAN_FLAGS
 
 # 3. Apply with Automatic Location Failover
 for LOCATION in "${LOCATIONS[@]}"; do
