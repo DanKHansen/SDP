@@ -142,14 +142,38 @@ else
     exit 1
 fi
 
-# 6a. Early Checkpoint: Verify ingress-nginx namespace has content — NEW DIAGNOSTIC CHECKPOINT
+# 6a. Wait for child ArgoCD Applications to sync — NEW RACE CONDITION FIX
+echo -e "${YELLOW}⏳ Waiting for child ArgoCD Applications to sync...${NC}"
+CHILD_APPS_SYNCED=false
+for _ in $(seq 1 60); do
+    CHILD_STATUS=$(ssh_cmd "kubectl get applications -n argocd -o jsonpath='{range .items[*]}{.metadata.name}:{.status.sync.status}:{.status.health.status}{\"\\n\"}{end}'" 2>/dev/null || echo "")
+
+    # Check if all apps (excluding sdp-root) are Synced
+    UNSYNCED=$(echo "$CHILD_STATUS" | grep -v "^sdp-root:" | grep -v ":Synced:" || echo "")
+
+    if [[ -z "$UNSYNCED" ]]; then
+        CHILD_APPS_SYNCED=true
+        break
+    fi
+    echo -n "."
+    sleep 5
+done
+
+if [[ "$CHILD_APPS_SYNCED" != true ]]; then
+    echo -e "\n${RED}❌ Timeout waiting for child ArgoCD Applications to sync.${NC}"
+    ssh_cmd "kubectl get applications -A" || true
+    exit 1
+fi
+echo -e "${GREEN}✅ All child ArgoCD Applications are Synced.${NC}"
+
+# 6b. Early Checkpoint: Verify ingress-nginx namespace has content — DIAGNOSTIC CHECKPOINT
 echo -e "${YELLOW}⏳ Checking ingress-nginx namespace has deployments...${NC}"
 INGRESS_PODS=$(ssh_cmd "kubectl get pods -n ingress-nginx --no-headers 2>/dev/null | wc -l" || echo "0")
 if [ "$INGRESS_PODS" -eq 0 ]; then
     echo -e "\n${RED}❌ No pods in ingress-nginx namespace (deployment may have failed)${NC}"
     echo -e "${YELLOW}📋 Diagnostic dump:${NC}"
     ssh_cmd "echo '=== ArgoCD Applications ==='; kubectl get applications -A 2>&1; echo '---'; \
-             echo '=== ingreess-nginx namespace resources ==='; kubectl get all -n ingress-nginx 2>&1; echo '---'; \
+             echo '=== ingress-nginx namespace resources ==='; kubectl get all -n ingress-nginx 2>&1; echo '---'; \
              echo '=== ArgoCD Root Application Status ==='; kubectl describe application -n argocd sdp-root 2>&1 | tail -30" || true
     exit 1
 else
