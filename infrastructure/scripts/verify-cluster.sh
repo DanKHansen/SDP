@@ -166,18 +166,18 @@ if [[ "$CHILD_APPS_SYNCED" != true ]]; then
 fi
 echo -e "${GREEN}✅ All child ArgoCD Applications are Synced.${NC}"
 
-# 6b. Early Checkpoint: Verify ingress-nginx namespace has content — DIAGNOSTIC CHECKPOINT
-echo -e "${YELLOW}⏳ Checking ingress-nginx namespace has deployments...${NC}"
-INGRESS_PODS=$(ssh_cmd "kubectl get pods -n ingress-nginx --no-headers 2>/dev/null | wc -l" || echo "0")
+# 6b. Early Checkpoint: Verify traefik namespace has content
+echo -e "${YELLOW}⏳ Checking traefik namespace has deployments...${NC}"
+INGRESS_PODS=$(ssh_cmd "kubectl get pods -n traefik --no-headers 2>/dev/null | wc -l" || echo "0")
 if [ "$INGRESS_PODS" -eq 0 ]; then
-    echo -e "\n${RED}❌ No pods in ingress-nginx namespace (deployment may have failed)${NC}"
+    echo -e "\n${RED}❌ No pods in traefik namespace (deployment may have failed)${NC}"
     echo -e "${YELLOW}📋 Diagnostic dump:${NC}"
     ssh_cmd "echo '=== ArgoCD Applications ==='; kubectl get applications -A 2>&1; echo '---'; \
-             echo '=== ingress-nginx namespace resources ==='; kubectl get all -n ingress-nginx 2>&1; echo '---'; \
+             echo '=== traefik namespace resources ==='; kubectl get all -n traefik 2>&1; echo '---'; \
              echo '=== ArgoCD Root Application Status ==='; kubectl describe application -n argocd sdp-root 2>&1 | tail -30" || true
     exit 1
 else
-    echo -e "${GREEN}✅ Found $INGRESS_PODS pod(s) in ingress-nginx namespace${NC}"
+    echo -e "${GREEN}✅ Found $INGRESS_PODS pod(s) in traefik namespace${NC}"
 fi
 
 # 7. Verify Longhorn (Dynamic check) — FIXED: Dynamic node count comparison
@@ -203,35 +203,35 @@ else
     exit 1
 fi
 
-# 8. Verify NGINX Ingress Controller (Dynamic check) — FIXED: Compare desired vs available
-echo -e "${YELLOW}⏳ Checking NGINX Ingress Controller...${NC}"
-NGINX_READY=false
+# 8. Verify Traefik Ingress Controller (Dynamic check)
+echo -e "${YELLOW}⏳ Checking Traefik Ingress Controller...${NC}"
+TRAEFIK_READY=false
 for _ in $(seq 1 120); do
-    COMBINED=$(ssh_cmd "kubectl get deployment ingress-nginx-controller -n ingress-nginx -o jsonpath='{.spec.replicas}:{.status.availableReplicas}'" 2>/dev/null || echo "")
+    COMBINED=$(ssh_cmd "kubectl get deployment traefik -n traefik -o jsonpath='{.spec.replicas}:{.status.availableReplicas}'" 2>/dev/null || echo "")
     DESIRED="${COMBINED%%:*}"
     AVAILABLE="${COMBINED##*:}"
     if [ "$DESIRED" != "0" ] && [ "$AVAILABLE" == "$DESIRED" ]; then
-        NGINX_READY=true
+        TRAEFIK_READY=true
         break
     fi
     echo -n "."
     sleep 5
 done
 
-if [ "$NGINX_READY" = true ]; then
-    echo -e "\n${GREEN}✅ NGINX Ingress Controller is running (${AVAILABLE}/${DESIRED}).${NC}"
+if [ "$TRAEFIK_READY" = true ]; then
+    echo -e "\n${GREEN}✅ Traefik Ingress Controller is running (${AVAILABLE}/${DESIRED}).${NC}"
 else
-    echo -e "\n${RED}❌ Timeout waiting for NGINX Ingress Controller.${NC}"
-    ssh_cmd "kubectl get pods -n ingress-nginx" || true
-    ssh_cmd "kubectl describe deployment ingress-nginx-controller -n ingress-nginx" || true
+    echo -e "\n${RED}❌ Timeout waiting for Traefik Ingress Controller.${NC}"
+    ssh_cmd "kubectl get pods -n traefik" || true
+    ssh_cmd "kubectl describe deployment traefik -n traefik" || true
     exit 1
 fi
 
-# 9. Verify NGINX LoadBalancer has External IP
-echo -e "${YELLOW}⏳ Checking NGINX LoadBalancer External IP...${NC}"
+# 9. Verify Traefik LoadBalancer has External IP
+echo -e "${YELLOW}⏳ Checking Traefik LoadBalancer External IP...${NC}"
 LB_READY=false
 for _ in $(seq 1 60); do
-    LB_IP=$(ssh_cmd "kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null" || echo "")
+    LB_IP=$(ssh_cmd "kubectl get svc traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null" || echo "")
     if [ -n "$LB_IP" ] && [ "$LB_IP" != "" ]; then
         LB_READY=true
         break
@@ -241,11 +241,11 @@ for _ in $(seq 1 60); do
 done
 
 if [ "$LB_READY" = true ]; then
-    echo -e "\n${GREEN}✅ NGINX LoadBalancer is accessible at $LB_IP${NC}"
+    echo -e "\n${GREEN}✅ Traefik LoadBalancer is accessible at $LB_IP${NC}"
 else
     echo -e "\n${RED}❌ Timeout waiting for LoadBalancer External IP.${NC}"
-    ssh_cmd "kubectl get svc -n ingress-nginx" || true
-    ssh_cmd "kubectl describe svc ingress-nginx-controller -n ingress-nginx" || true
+    ssh_cmd "kubectl get svc -n traefik" || true
+    ssh_cmd "kubectl describe svc traefik -n traefik" || true
     exit 1
 fi
 
@@ -256,10 +256,10 @@ echo "=== VERIFICATION SUMMARY ==="
 [[ "$ARGOCD_READY" == "true" ]] && echo "✅ ArgoCD Server: OK" || echo "❌ ArgoCD Server: FAILED"
 [[ "$ARGOCD_APP_SYNCED" == "true" ]] && echo "✅ ArgoCD Root App: Synced" || echo "❌ ArgoCD Root App: FAILED"
 [[ "$LONGHORN_READY" == "true" ]] && echo "✅ Longhorn: OK" || echo "❌ Longhorn: FAILED"
-[[ "$NGINX_READY" == "true" ]] && echo "✅ NGINX Ingress: OK" || echo "❌ NGINX Ingress: FAILED"
+[[ "$TRAEFIK_READY" == "true" ]] && echo "✅ Traefik Ingress: OK" || echo "❌ Traefik Ingress: FAILED"
 [[ "$LB_READY" == "true" ]] && echo "✅ LoadBalancer IP: $LB_IP" || echo "❌ LoadBalancer IP: FAILED"
 
-if [[ "$CCM_READY" == "true" && "$ARGOCD_READY" == "true" && "$ARGOCD_APP_SYNCED" == "true" && "$LONGHORN_READY" == "true" && "$NGINX_READY" == "true" && "$LB_READY" == "true" ]]; then
+if [[ "$CCM_READY" == "true" && "$ARGOCD_READY" == "true" && "$ARGOCD_APP_SYNCED" == "true" && "$LONGHORN_READY" == "true" && "$TRAEFIK_READY" == "true" && "$LB_READY" == "true" ]]; then
     echo -e "${GREEN}All systems operational.${NC}"
     exit 0
 else

@@ -268,7 +268,16 @@ runcmd:
     echo "Waiting for ArgoCD..."
     for i in $(seq 1 36); do
       if kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-server -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
-        echo "ArgoCD Ready."
+        echo "ArgoCD Server Ready."
+        break
+      fi
+      sleep 5
+    done
+
+    echo "Waiting for ArgoCD repo-server..."
+    for i in $(seq 1 36); do
+      if kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-repo-server -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
+        echo "ArgoCD repo-server Ready."
         break
       fi
       sleep 5
@@ -292,10 +301,10 @@ runcmd:
       sleep 5
     done
 
-    echo "Waiting for NGINX Ingress (via ArgoCD sync)..."
+    echo "Waiting for Traefik Ingress (via ArgoCD sync)..."
     for i in $(seq 1 36); do
-      if kubectl get pods -n ingress-nginx -l app.kubernetes.io/component=controller -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
-        echo "NGINX Ingress Ready."
+      if kubectl get pods -n traefik -l app.kubernetes.io/name=traefik -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
+        echo "Traefik Ready."
         break
       fi
       sleep 5
