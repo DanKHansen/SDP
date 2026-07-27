@@ -1,0 +1,60 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: traefik
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://traefik.github.io/charts
+    targetRevision: 41.0.2
+    chart: traefik
+    helm:
+      releaseName: traefik
+      values: |
+        globalArguments:
+          - "--global.checknewversion=false"
+          - "--global.sendanonymoususage=false"
+
+        deployment:
+          enabled: true
+          replicas: 2
+
+        service:
+          enabled: true
+          type: LoadBalancer
+          annotations:
+            load-balancer.hetzner.cloud/use-private-ip: "false"
+            load-balancer.hetzner.cloud/network-zone: "eu-central"
+
+        ports:
+          web:
+            port: 80
+            exposedPort: 80
+            protocol: TCP
+          websecure:
+            port: 443
+            exposedPort: 443
+            protocol: TCP
+
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+        nodeSelector:
+          kubernetes.io/os: linux
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: traefik
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
