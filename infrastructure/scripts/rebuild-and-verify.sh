@@ -171,7 +171,7 @@ done
 
 # 6. Wait for cloud-init to complete (blocks until all runcmd finishes)
 echo -e "${YELLOW}⏳ Waiting for cloud-init to complete...${NC}"
-ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR root@"$MASTER_IP" "cloud-init status --wait" || true
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR root@"$MASTER_IP" "cloud-init status --wait" || true
 
 # Give ArgoCD components a moment to stabilize after cloud-init reports done
 # (repo-server gRPC may need a few seconds to accept connections after pod reports Running)
