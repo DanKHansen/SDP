@@ -41,7 +41,7 @@ while ! ssh_cmd "kubectl get nodes >/dev/null 2>&1"; do
 done
 echo -e "\n${GREEN}✅ K3s cluster is responsive.${NC}"
 
-# 3. Wait for Nodes to be Ready (Individual Check) — FIXED: Verify nodes exist first
+# 3. Wait for Nodes to be Ready (Individual Check)
 echo -e "${YELLOW}⏳ Waiting for all nodes to reach Ready status...${NC}"
 MAX_WAIT=420
 COUNT=0
@@ -73,13 +73,15 @@ else
     exit 1
 fi
 
-# 4. Verify Hetzner CCM (With Retry Loop) — FIXED: Dynamic replica check
+# 4. Verify Hetzner CCM (With Retry Loop) — FIXED: Empty-value guard
 echo -e "${YELLOW}⏳ Checking Hetzner Cloud Controller Manager...${NC}"
 CCM_READY=false
 for _ in $(seq 1 60); do
-    DESIRED=$(ssh_cmd "kubectl get deployment hcloud-cloud-controller-manager -n kube-system -o jsonpath='{.spec.replicas}' 2>/dev/null" || echo "0")
-    AVAILABLE=$(ssh_cmd "kubectl get deployment hcloud-cloud-controller-manager -n kube-system -o jsonpath='{.status.availableReplicas}' 2>/dev/null" || echo "0")
-    if [ "$DESIRED" != "0" ] && [ "$AVAILABLE" == "$DESIRED" ]; then
+    COMBINED=$(ssh_cmd "kubectl get deployment hcloud-cloud-controller-manager -n kube-system -o jsonpath='{.spec.replicas}:{.status.availableReplicas}'" 2>/dev/null || echo "")
+    DESIRED="${COMBINED%%:*}"
+    AVAILABLE="${COMBINED##*:}"
+    # Guard: reject empty values (deployment doesn't exist yet)
+    if [ -n "$DESIRED" ] && [ "$DESIRED" != "0" ] && [ "$AVAILABLE" == "$DESIRED" ]; then
         CCM_READY=true
         break
     fi
@@ -88,21 +90,22 @@ for _ in $(seq 1 60); do
 done
 
 if [ "$CCM_READY" = true ]; then
-    echo -e "\n${GREEN}✅ Hetzner CCM is running (${DESIRED}/${DESIRED}).${NC}"
+    echo -e "\n${GREEN}✅ Hetzner CCM is running (${AVAILABLE}/${DESIRED}).${NC}"
 else
     echo -e "\n${RED}❌ Timeout waiting for Hetzner CCM.${NC}"
     ssh_cmd "kubectl describe deployment hcloud-cloud-controller-manager -n kube-system" || true
     exit 1
 fi
 
-# 5. Verify ArgoCD (With Retry Loop) — FIXED: Combined SSH calls
+# 5. Verify ArgoCD (With Retry Loop) — FIXED: Empty-value guard
 echo -e "${YELLOW}⏳ Checking ArgoCD Server...${NC}"
 ARGOCD_READY=false
 for _ in $(seq 1 60); do
     COMBINED=$(ssh_cmd "kubectl get deployment argocd-server -n argocd -o jsonpath='{.spec.replicas}:{.status.availableReplicas}'" 2>/dev/null || echo "")
     DESIRED="${COMBINED%%:*}"
     AVAILABLE="${COMBINED##*:}"
-    if [ "$DESIRED" != "0" ] && [ "$AVAILABLE" == "$DESIRED" ]; then
+    # Guard: reject empty values (deployment doesn't exist yet)
+    if [ -n "$DESIRED" ] && [ "$DESIRED" != "0" ] && [ "$AVAILABLE" == "$DESIRED" ]; then
         ARGOCD_READY=true
         break
     fi
@@ -111,7 +114,7 @@ for _ in $(seq 1 60); do
 done
 
 if [ "$ARGOCD_READY" = true ]; then
-    echo -e "\n${GREEN}✅ ArgoCD Server is running (${DESIRED}/${DESIRED}).${NC}"
+    echo -e "\n${GREEN}✅ ArgoCD Server is running (${AVAILABLE}/${DESIRED}).${NC}"
 else
     echo -e "\n${RED}❌ Timeout waiting for ArgoCD Server.${NC}"
     ssh_cmd "kubectl get pods -n argocd" || true
@@ -119,7 +122,7 @@ else
     exit 1
 fi
 
-# 6. Verify ArgoCD Root Application Sync — FIXED: Combined SSH call
+# 6. Verify ArgoCD Root Application Sync
 echo -e "${YELLOW}⏳ Checking ArgoCD Root Application sync status...${NC}"
 ARGOCD_APP_SYNCED=false
 for _ in $(seq 1 60); do
@@ -142,7 +145,7 @@ else
     exit 1
 fi
 
-# 6a. Wait for child ArgoCD Applications to sync — NEW RACE CONDITION FIX
+# 6a. Wait for child ArgoCD Applications to sync
 echo -e "${YELLOW}⏳ Waiting for child ArgoCD Applications to sync...${NC}"
 CHILD_APPS_SYNCED=false
 for _ in $(seq 1 60); do
@@ -180,12 +183,12 @@ else
     echo -e "${GREEN}✅ Found $INGRESS_PODS pod(s) in traefik namespace${NC}"
 fi
 
-# 7. Verify Longhorn (Dynamic check) — FIXED: Dynamic node count comparison
+# 7. Verify Longhorn (Dynamic check)
 echo -e "${YELLOW}⏳ Checking Longhorn Manager...${NC}"
 LONGHORN_READY=false
 for _ in $(seq 1 120); do
-    DESIRED=$(ssh_cmd "kubectl get daemonset longhorn-manager -n longhorn-system -o jsonpath='{.status.desiredNumberScheduled}' 2>/dev/null" || echo "0")
-    READY=$(ssh_cmd "kubectl get daemonset longhorn-manager -n longhorn-system -o jsonpath='{.status.numberReady}' 2>/dev/null" || echo "0")
+    DESIRED=$(ssh_cmd "kubectl get daemonset longhorn-manager -n longhorn-system -o jsonpath='{.status.desiredNumberScheduled}'" 2>/dev/null || echo "0")
+    READY=$(ssh_cmd "kubectl get daemonset longhorn-manager -n longhorn-system -o jsonpath='{.status.numberReady}'" 2>/dev/null || echo "0")
     if [ "$READY" == "$DESIRED" ] && [ "$DESIRED" != "0" ]; then
         LONGHORN_READY=true
         break
@@ -203,14 +206,15 @@ else
     exit 1
 fi
 
-# 8. Verify Traefik Ingress Controller (Dynamic check)
+# 8. Verify Traefik Ingress Controller (Dynamic check) — FIXED: Empty-value guard
 echo -e "${YELLOW}⏳ Checking Traefik Ingress Controller...${NC}"
 TRAEFIK_READY=false
 for _ in $(seq 1 120); do
     COMBINED=$(ssh_cmd "kubectl get deployment traefik -n traefik -o jsonpath='{.spec.replicas}:{.status.availableReplicas}'" 2>/dev/null || echo "")
     DESIRED="${COMBINED%%:*}"
     AVAILABLE="${COMBINED##*:}"
-    if [ "$DESIRED" != "0" ] && [ "$AVAILABLE" == "$DESIRED" ]; then
+    # Guard: reject empty values (deployment doesn't exist yet)
+    if [ -n "$DESIRED" ] && [ "$DESIRED" != "0" ] && [ "$AVAILABLE" == "$DESIRED" ]; then
         TRAEFIK_READY=true
         break
     fi

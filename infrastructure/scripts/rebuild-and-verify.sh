@@ -168,9 +168,17 @@ echo -e "${YELLOW}⏳ Waiting for SSH access...${NC}"
 until ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null root@"$MASTER_IP" "echo 'SSH ready'" >/dev/null 2>&1; do
     sleep 2
 done
-sleep 10
 
-# 6. Run verification
+# 6. Wait for cloud-init to complete (blocks until all runcmd finishes)
+echo -e "${YELLOW}⏳ Waiting for cloud-init to complete...${NC}"
+ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR root@"$MASTER_IP" "cloud-init status --wait" || true
+
+# Give ArgoCD components a moment to stabilize after cloud-init reports done
+# (repo-server gRPC may need a few seconds to accept connections after pod reports Running)
+echo -e "${YELLOW}⏳ Stabilizing ArgoCD components (15s)...${NC}"
+sleep 15
+
+# 7. Run verification
 echo -e "${GREEN}✅ Running verification...${NC}"
 set +e
 "$SCRIPT_DIR/verify-cluster.sh"
