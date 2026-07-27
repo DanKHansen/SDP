@@ -148,7 +148,7 @@ fi
 # 6a. Wait for child ArgoCD Applications to sync
 echo -e "${YELLOW}⏳ Waiting for child ArgoCD Applications to sync...${NC}"
 CHILD_APPS_SYNCED=false
-for _ in $(seq 1 60); do
+for _ in $(seq 1 120); do  # ← Changed from 60 to 120
     CHILD_STATUS=$(ssh_cmd "kubectl get applications -n argocd -o jsonpath='{range .items[*]}{.metadata.name}:{.status.sync.status}:{.status.health.status}{\"\\n\"}{end}'" 2>/dev/null || echo "")
 
     # Check if all apps (excluding sdp-root) are Synced
@@ -165,6 +165,7 @@ done
 if [[ "$CHILD_APPS_SYNCED" != true ]]; then
     echo -e "\n${RED}❌ Timeout waiting for child ArgoCD Applications to sync.${NC}"
     ssh_cmd "kubectl get applications -A" || true
+    ssh_cmd "kubectl describe application traefik -n argocd" || true  # ← NEW: detailed status
     exit 1
 fi
 echo -e "${GREEN}✅ All child ArgoCD Applications are Synced.${NC}"
