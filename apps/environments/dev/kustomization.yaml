@@ -4,3 +4,4 @@ resources:
   - root-application.yaml
   - ../../base/traefik
   - ../../base/longhorn
+  - ../../base/velero
