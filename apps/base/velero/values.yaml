@@ -1,0 +1,60 @@
+image:
+  repository: velero/velero
+  tag: v1.18.1
+  pullPolicy: IfNotPresent
+
+configuration:
+  providers:
+    - aws
+
+  backupStorageLocations:
+    - provider: aws
+      default: true
+      credential:
+        name: cloud
+        key: cloud
+      objectStorage:
+        bucket: sdp-backups-hel1
+      config:
+        region: hel1-dc2
+        s3Url: https://hsn.hel1.cloud.netapp.com
+        s3ForcePathStyle: "true"
+        insecureSkipTLSVerify: false
+
+  volumeSnapshotLocations: []
+
+initContainers:
+  - name: velero-plugin-for-aws
+    image: velero/velero-plugin-for-aws:v1.14.2
+    imagePullPolicy: IfNotPresent
+    volumeMounts:
+      - mountPath: /target
+        name: plugins
+
+credentials:
+  useSecret: false
+  existingSecret: cloud
+  secretContents: {}
+
+restic:
+  enable: true
+  privileged: false
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+
+resticResources:
+  limits:
+    cpu: 500m
+    memory: 1Gi
+  requests:
+    cpu: 100m
+    memory: 512Mi
+
+logLevel: info
+deploySchedule: false

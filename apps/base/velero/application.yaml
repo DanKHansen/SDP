@@ -7,74 +7,22 @@ spec:
   project: default
   source:
     repoURL: https://vmware-tanzu.github.io/helm-charts/
-    targetRevision: 6.0.0
+    targetRevision: 12.1.0
     chart: velero
     helm:
       releaseName: velero
-      valuesObject:
-        # Namespace
-        namespace: velero
-
-        # Image
-        image:
-          repository: velero/velero
-          tag: v1.13.0
-
-        # S3 Configuration (Hetzner Storage Box)
-        initContainers:
-          - name: velero-plugin-for-aws
-            image: velero/velero-plugin-for-aws:v1.9.0
-            volumeMounts:
-              - mountPath: /target
-                name: velero-plugins
-        volumes:
-          - name: velero-plugins
-            emptyDir: {}
-
-        # Restic for PV backups
-        restic:
-          enabled: true
-          resources:
-            limits:
-              cpu: 500m
-              memory: 512Mi
-            requests:
-              cpu: 100m
-              memory: 128Mi
-
-        # Backup Storage Location
-        extraArgs:
-          - --features=EnableCSI # Enable CSI snapshot support
-
-        # Credentials - will be mounted from Secret
-        credentials:
-          useSecret: true
-          secretContents:
-            cloud: |
-              [default]
-              aws_access_key_id = ${HB_S3_ACCESS_KEY}
-              aws_secret_access_key = ${HB_S3_SECRET_KEY}
-
-        # Configuration
-        configurations:
-          backupStorageLocation:
-            - name: default
-              provider: aws
-              prefix: sdp-backups
-              config:
-                region: us-east-1 # Required field, not used for S3 compat
-                s3Url: https://s3.fsn1.hetzner.cloud
-                insecureSkipTLSVerify: false
-                s3ForcePathStyle: true
-          volumeSnapshotLocation:
-            - name: default
-              provider: generic
-
-        # Resource requests/limits
-        resources:
-          limits:
-            cpu: 1000m
-            memory: 1Gi
-          requests:
-            cpu: 200m
-            memory: 256Mi
+      valueFiles:
+        - $values/apps/base/velero/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: velero
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 5m
