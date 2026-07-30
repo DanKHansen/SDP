@@ -76,6 +76,8 @@ spec:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      - SkipDryRunOnMissingResource=true
     retry:
       limit: 5
       backoff:
