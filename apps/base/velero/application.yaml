@@ -11,87 +11,64 @@ spec:
     chart: velero
     helm:
       releaseName: velero
-      parameters:
-        # Image configuration
-        - name: image.repository
-          value: velero/velero
-        - name: image.tag
-          value: v1.18.1
-        - name: image.pullPolicy
-          value: IfNotPresent
+      values: |
+        image:
+          repository: velero/velero
+          tag: v1.18.1
+          pullPolicy: IfNotPresent
 
-        # AWS provider
-        - name: configuration.providers[0]
-          value: aws
+        configuration:
+          providers:
+            - aws
+          backupStorageLocations:
+            - provider: aws
+              default: true
+              credential:
+                name: cloud
+                key: cloud
+              objectStorage:
+                bucket: sdp-backups-hel1
+              config:
+                region: hel1-dc2
+                s3Url: https://hsn.hel1.cloud.netapp.com
+                s3ForcePathStyle: "true"
+                insecureSkipTLSVerify: false
+          volumeSnapshotLocations: []
 
-        # Backup Storage Location
-        - name: configuration.backupStorageLocations[0].provider
-          value: aws
-        - name: configuration.backupStorageLocations[0].default
-          value: "true"
-        - name: configuration.backupStorageLocations[0].credential.name
-          value: cloud
-        - name: configuration.backupStorageLocations[0].credential.key
-          value: cloud
-        - name: configuration.backupStorageLocations[0].objectStorage.bucket
-          value: sdp-backups-hel1
-        - name: configuration.backupStorageLocations[0].config.region
-          value: hel1-dc2
-        - name: configuration.backupStorageLocations[0].config.s3Url
-          value: https://hsn.hel1.cloud.netapp.com
-        - name: configuration.backupStorageLocations[0].config.s3ForcePathStyle
-          value: "true"
-        - name: configuration.backupStorageLocations[0].config.insecureSkipTLSVerify
-          value: "false"
+        initContainers:
+          - name: velero-plugin-for-aws
+            image: velero/velero-plugin-for-aws:v1.14.2
+            imagePullPolicy: IfNotPresent
+            volumeMounts:
+              - mountPath: /target
+                name: plugins
 
-        # No volume snapshots (S3-only backup)
-        - name: configuration.volumeSnapshotLocations
-          value: "[]"
+        credentials:
+          useSecret: false
+          existingSecret: cloud
 
-        # Credentials reference
-        - name: credentials.useSecret
-          value: "false"
-        - name: credentials.existingSecret
-          value: cloud
+        restic:
+          enable: true
+          privileged: false
 
-        # Init container for AWS plugin
-        - name: initContainers[0].name
-          value: velero-plugin-for-aws
-        - name: initContainers[0].image
-          value: velero/velero-plugin-for-aws:v1.14.2
-        - name: initContainers[0].imagePullPolicy
-          value: IfNotPresent
-        - name: initContainers[0].volumeMounts[0].mountPath
-          value: /target
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+          requests:
+            cpu: 500m
+            memory: 1Gi
 
-        # Restic for PV backups
-        - name: restic.enable
-          value: "true"
-        - name: restic.privileged
-          value: "false"
+        resticResources:
+          limits:
+            cpu: 500m
+            memory: 1Gi
+          requests:
+            cpu: 100m
+            memory: 512Mi
 
-        # Resource limits
-        - name: resources.limits.cpu
-          value: 1000m
-        - name: resources.limits.memory
-          value: 2Gi
-        - name: resources.requests.cpu
-          value: 500m
-        - name: resources.requests.memory
-          value: 1Gi
-        - name: resticResources.limits.cpu
-          value: 500m
-        - name: resticResources.limits.memory
-          value: 1Gi
-        - name: resticResources.requests.cpu
-          value: 100m
-        - name: resticResources.requests.memory
-          value: 512Mi
-        # Logging
-        - name: logLevel
-          value: info
-        - name: deploySchedule
-          value: "false"
+        logLevel: info
+        deploySchedule: false
   destination:
     server: https://kubernetes.default.svc
     namespace: velero
