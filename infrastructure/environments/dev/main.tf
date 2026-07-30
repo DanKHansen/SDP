@@ -12,18 +12,30 @@ provider "hcloud" {
 }
 
 # Input Variables (matches dev.tfvars)
-variable "location"     { type = string }
+variable "location" { type = string }
 variable "network_cidr" { type = string }
-variable "ssh_key_id"   { type = string }
-variable "admin_ip"     { type = string }
-variable "server_type"  { type = string }
-variable "image"        { type = string }
-variable "node_count"   { type = number }
-variable "k3s_version"  { type = string }
-variable "k3s_token"    { type = string }
+variable "ssh_key_id" { type = string }
+variable "admin_ip" { type = string }
+variable "server_type" { type = string }
+variable "image" { type = string }
+variable "node_count" { type = number }
+variable "k3s_version" { type = string }
+variable "k3s_token" { type = string }
 
 variable "hcloud_token" {
   description = "Hetzner Cloud API Token"
+  type        = string
+  sensitive   = true
+}
+
+variable "hos_access_key_id" {
+  description = "Hetzner Object Storage S3 access key ID"
+  type        = string
+  sensitive   = true
+}
+
+variable "hos_secret_key" {
+  description = "Hetzner Object Storage S3 secret key"
   type        = string
   sensitive   = true
 }
@@ -41,15 +53,17 @@ module "networking" {
 module "compute" {
   source = "../../modules/compute"
 
-  location    = var.location
-  network_id  = module.networking.network_id
-  firewall_id = module.networking.firewall_id
-  ssh_key_id  = var.ssh_key_id
-  server_type = var.server_type
-  image_id    = var.image
-  k3s_token   = var.k3s_token
-  k3s_version = var.k3s_version
-  hcloud_token = var.hcloud_token
+  location          = var.location
+  network_id        = module.networking.network_id
+  firewall_id       = module.networking.firewall_id
+  ssh_key_id        = var.ssh_key_id
+  server_type       = var.server_type
+  image_id          = var.image
+  k3s_token         = var.k3s_token
+  k3s_version       = var.k3s_version
+  hcloud_token      = var.hcloud_token
+  hos_access_key_id = var.hos_access_key_id
+  hos_secret_key    = var.hos_secret_key
 }
 
 output "server_public_ips" {
