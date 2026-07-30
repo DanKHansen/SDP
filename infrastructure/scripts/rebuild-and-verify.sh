@@ -40,7 +40,7 @@ collect_debug_logs() {
     echo -e "${YELLOW}⚠️  Collecting debug logs before cleanup...${NC}"
 
     # Create log directory ONLY on failure
-    LOG_DIR="$HOME/Documents/DKH Dataengineering/DataPlatform/SDP/debug/debug-${TIMESTAMP}"
+    LOG_DIR="$HOME/Documents/DKH Dataengineering/DataPlatform/debug/debug-${TIMESTAMP}"
     mkdir -p "$LOG_DIR" 2>/dev/null || true
 
     # Save failed step info
