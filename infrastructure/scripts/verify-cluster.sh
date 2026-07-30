@@ -232,7 +232,77 @@ else
     exit 1
 fi
 
-# 9. Verify Traefik LoadBalancer has External IP
+# STEP 9: Verify Velero Deployment — With Retry Loop
+echo -e "${YELLOW}⏳ Checking Velero deployment...${NC}"
+VELERO_READY=false
+for _ in $(seq 1 120); do
+    COMBINED=$(ssh_cmd "kubectl get deployment velero -n velero -o jsonpath='{.spec.replicas}:{.status.availableReplicas}'" 2>/dev/null || echo "")
+    DESIRED="${COMBINED%%:*}"
+    AVAILABLE="${COMBINED##*:}"
+    # Guard: reject empty values (deployment doesn't exist yet)
+    if [ -n "$DESIRED" ] && [ "$DESIRED" != "0" ] && [ "$AVAILABLE" == "$DESIRED" ]; then
+        VELERO_READY=true
+        break
+    fi
+    echo -n "."
+    sleep 5
+done
+
+if [ "$VELERO_READY" = true ]; then
+    echo -e "\n${GREEN}✅ Velero Server is running (${AVAILABLE}/${DESIRED}).${NC}"
+else
+    echo -e "\n${RED}❌ Timeout waiting for Velero Server.${NC}"
+    ssh_cmd "kubectl get pods -n velero" || true
+    ssh_cmd "kubectl describe deployment velero -n velero" || true
+    exit 1
+fi
+
+# STEP 10: Verify Velero Restic DaemonSet — With Retry Loop
+echo -e "${YELLOW}⏳ Checking Velero Restic daemonset...${NC}"
+RESTIC_READY=false
+for _ in $(seq 1 120); do
+    DESIRED=$(ssh_cmd "kubectl get daemonset restic -n velero -o jsonpath='{.status.desiredNumberScheduled}'" 2>/dev/null || echo "0")
+    READY=$(ssh_cmd "kubectl get daemonset restic -n velero -o jsonpath='{.status.numberReady}'" 2>/dev/null || echo "0")
+    if [ "$READY" == "$DESIRED" ] && [ "$DESIRED" != "0" ]; then
+        RESTIC_READY=true
+        break
+    fi
+    echo -n "."
+    sleep 5
+done
+
+if [ "$RESTIC_READY" = true ]; then
+    echo -e "\n${GREEN}✅ Restic DaemonSet is running (${READY}/${DESIRED} nodes).${NC}"
+else
+    echo -e "\n${RED}❌ Timeout waiting for Restic DaemonSet.${NC}"
+    ssh_cmd "kubectl get pods -n velero" || true
+    ssh_cmd "kubectl describe daemonset restic -n velero" || true
+    exit 1
+fi
+
+# STEP 11: Verify Backup Storage Location — With Retry Loop
+echo -e "${YELLOW}⏳ Checking Velero backup storage location...${NC}"
+BSL_READY=false
+for _ in $(seq 1 120); do
+    BSL_STATUS=$(ssh_cmd "kubectl get backupstoragelocations.velero.io/default -n velero -o jsonpath='{.status.phase}'" 2>/dev/null || echo "")
+    if [ "$BSL_STATUS" == "Available" ]; then
+        BSL_READY=true
+        break
+    fi
+    echo -n "."
+    sleep 5
+done
+
+if [ "$BSL_READY" = true ]; then
+    echo -e "\n${GREEN}✅ Backup Storage Location is Available.${NC}"
+else
+    echo -e "\n${RED}❌ Timeout waiting for Backup Storage Location.${NC}"
+    ssh_cmd "kubectl get backupstoragelocations -n velero" || true
+    ssh_cmd "kubectl describe backupstoragelocation default -n velero" || true
+    exit 1
+fi
+
+# STEP 12: Verify Traefik LoadBalancer has External IP
 echo -e "${YELLOW}⏳ Checking Traefik LoadBalancer External IP...${NC}"
 LB_READY=false
 for _ in $(seq 1 60); do
@@ -262,9 +332,12 @@ echo "=== VERIFICATION SUMMARY ==="
 [[ "$ARGOCD_APP_SYNCED" == "true" ]] && echo "✅ ArgoCD Root App: Synced" || echo "❌ ArgoCD Root App: FAILED"
 [[ "$LONGHORN_READY" == "true" ]] && echo "✅ Longhorn: OK" || echo "❌ Longhorn: FAILED"
 [[ "$TRAEFIK_READY" == "true" ]] && echo "✅ Traefik Ingress: OK" || echo "❌ Traefik Ingress: FAILED"
+[[ "$VELERO_READY" == "true" ]] && echo "✅ Velero: OK" || echo "❌ Velero: FAILED"
+[[ "$RESTIC_READY" == "true" ]] && echo "✅ Restic: OK" || echo "❌ Restic: FAILED"
+[[ "$BSL_READY" == "true" ]] && echo "✅ Backup Storage: OK" || echo "❌ Backup Storage: FAILED"
 [[ "$LB_READY" == "true" ]] && echo "✅ LoadBalancer IP: $LB_IP" || echo "❌ LoadBalancer IP: FAILED"
 
-if [[ "$CCM_READY" == "true" && "$ARGOCD_READY" == "true" && "$ARGOCD_APP_SYNCED" == "true" && "$LONGHORN_READY" == "true" && "$TRAEFIK_READY" == "true" && "$LB_READY" == "true" ]]; then
+if [[ "$CCM_READY" == "true" && "$ARGOCD_READY" == "true" && "$ARGOCD_APP_SYNCED" == "true" && "$LONGHORN_READY" == "true" && "$TRAEFIK_READY" == "true" && "$VELERO_READY" == "true" && "$RESTIC_READY" == "true" && "$BSL_READY" == "true" && "$LB_READY" == "true" ]]; then
     echo -e "${GREEN}All systems operational.${NC}"
     exit 0
 else
