@@ -27,7 +27,7 @@ CLEAN_FLAGS=""
 
 # Debug log directory (created on failure)
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-LOG_DIR="$HOME/Documents/DKH Dataengineering/SDP/debug/debug-${TIMESTAMP}"
+LOG_DIR="$HOME/Documents/DKH Dataengineering/DataPlatform/SDP/debug/debug-${TIMESTAMP}"
 mkdir -p "$LOG_DIR" 2>/dev/null || true
 
 APPLIED=false
