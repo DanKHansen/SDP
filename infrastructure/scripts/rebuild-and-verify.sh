@@ -25,10 +25,8 @@ SHOW_APPLY_OUTPUT="$VERBOSE"
 CLEAN_FLAGS=""
 [[ "$VERBOSE" == "true" ]] && CLEAN_FLAGS="-v"
 
-# Debug log directory (created on failure)
+# Single TIMESTAMP for all logging (correlated timestamps)
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-LOG_DIR="$HOME/Documents/DKH Dataengineering/DataPlatform/SDP/debug/debug-${TIMESTAMP}"
-mkdir -p "$LOG_DIR" 2>/dev/null || true
 
 APPLIED=false
 APPLY_SUCCESS=false
@@ -41,8 +39,9 @@ collect_debug_logs() {
     local exit_code=$1
     echo -e "${YELLOW}⚠️  Collecting debug logs before cleanup...${NC}"
 
-    # Create log directory
-    mkdir -p "$LOG_DIR"
+    # Create log directory ONLY on failure
+    LOG_DIR="$HOME/Documents/DKH Dataengineering/DataPlatform/SDP/debug/debug-${TIMESTAMP}"
+    mkdir -p "$LOG_DIR" 2>/dev/null || true
 
     # Save failed step info
     {
@@ -207,8 +206,7 @@ for LOCATION in "${LOCATIONS[@]}"; do
 
     # Apply
     echo -e "${YELLOW}🔨 Running tofu apply...${NC}"
-    APPLY_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-    LOG_FILE="/tmp/tofu_apply_${LOCATION}_${APPLY_TIMESTAMP}.log"
+    LOG_FILE="/tmp/tofu_apply_${LOCATION}_${TIMESTAMP}.log"
     set +e
     if [[ "$SHOW_APPLY_OUTPUT" == "true" ]]; then
         (cd "$ENV_DIR" && tofu apply -var-file="$TF_VARS" -var="location=$LOCATION" -auto-approve 2>&1 | tee "$LOG_FILE")
