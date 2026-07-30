@@ -97,6 +97,26 @@ write_files:
           applicationSet:
             replicas: 1
 
+  - path: /var/lib/rancher/k3s/server/manifests/03-velero-credentials.yaml
+    permissions: "0644"
+    content: |
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: velero
+      ---
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: cloud
+        namespace: velero
+      type: Opaque
+      stringData:
+        cloud: |
+          [default]
+          aws_access_key_id = ${hos_access_key_id}
+          aws_secret_access_key = ${hos_secret_key}    
+
   - path: /opt/sdp/root-application.yaml
     permissions: "0644"
     content: |
