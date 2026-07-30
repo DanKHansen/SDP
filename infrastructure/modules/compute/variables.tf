@@ -44,3 +44,15 @@ variable "hcloud_token" {
   type        = string
   sensitive   = true
 }
+
+variable "hos_access_key_id" {
+  description = "Hetzner Object Storage S3 access key ID"
+  type        = string
+  sensitive   = true
+}
+
+variable "hos_secret_key" {
+  description = "Hetzner Object Storage S3 secret key"
+  type        = string
+  sensitive   = true
+}
