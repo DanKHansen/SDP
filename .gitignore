@@ -63,7 +63,7 @@ data-platform/ingestion/nifi-flows/*.log # Optional: if logs end up in flow file
 .kube/
 helm-debug/
 Chart.lock
-# Do not ignore Chart.yaml or values.yaml! Only generated artifacts.
+# Do not ignore Chart.yaml Only generated artifacts.
 
 # ==========================================
 # 5. IDE & OS
