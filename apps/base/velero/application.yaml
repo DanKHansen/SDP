@@ -87,7 +87,6 @@ spec:
           value: 100m
         - name: resticResources.requests.memory
           value: 512Mi
-
         # Logging
         - name: logLevel
           value: info
