@@ -1,3 +1,4 @@
+# apps/environments/dev/root-application.yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -6,13 +7,17 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/DanKHansen/SDP.git  # Placeholder — update when repo is public/private
-    targetRevision: main
     path: apps/environments/dev
+    repoURL: https://github.com/DanKHansen/SDP.git
+    targetRevision: HEAD
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
   syncPolicy:
     automated:
-      prune: true
+      prune: false
       selfHeal: true
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: baseline
+        pod-security.kubernetes.io/audit: baseline

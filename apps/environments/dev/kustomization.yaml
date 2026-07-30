@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - ../../base/traefik
   - ../../base/longhorn
+  - ../../base/velero-crds
   - ../../base/velero
 
 generatorOptions:
