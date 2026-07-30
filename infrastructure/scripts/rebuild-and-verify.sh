@@ -44,11 +44,13 @@ collect_debug_logs() {
     mkdir -p "$LOG_DIR"
 
     # Save failed step info
-    echo "Failed Step: ${FAILED_STEP:-unknown}" > "$LOG_DIR/failure-info.txt"
-    echo "Exit Code: $exit_code" >> "$LOG_DIR/failure-info.txt"
-    echo "Last Location: ${LAST_ATTEMPTED:-none}" >> "$LOG_DIR/failure-info.txt"
-    echo "Timestamp: $(date -Iseconds)" >> "$LOG_DIR/failure-info.txt"
-    echo "Master IP: ${MASTER_IP:-none}" >> "$LOG_DIR/failure-info.txt"
+    {
+      echo "Failed Step: ${FAILED_STEP:-unknown}"
+      echo "Exit Code: $exit_code"
+      echo "Last Location: ${LAST_ATTEMPTED:-none}"
+      echo "Timestamp: $(date -Iseconds)"
+      echo "Master IP: ${MASTER_IP:-none}"
+    } > "$LOG_DIR/failure-info.txt"
 
     if [ -n "$MASTER_IP" ]; then
         # Cluster state
