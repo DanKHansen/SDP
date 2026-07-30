@@ -5,6 +5,7 @@ set -euo pipefail
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,35 +46,35 @@ collect_debug_logs() {
 
     # Save failed step info
     {
-      echo "Failed Step: ${FAILED_STEP:-unknown}"
-      echo "Exit Code: $exit_code"
-      echo "Last Location: ${LAST_ATTEMPTED:-none}"
-      echo "Timestamp: $(date -Iseconds)"
-      echo "Master IP: ${MASTER_IP:-none}"
+        echo "Failed Step: ${FAILED_STEP:-unknown}"
+        echo "Exit Code: $exit_code"
+        echo "Last Location: ${LAST_ATTEMPTED:-none}"
+        echo "Timestamp: $(date -Iseconds)"
+        echo "Master IP: ${MASTER_IP:-none}"
     } > "$LOG_DIR/failure-info.txt"
 
     if [ -n "$MASTER_IP" ]; then
         # Cluster state
         echo "Collecting cluster state..." >&2
-        ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR root@"$MASTER_IP" "kubectl get all --all-namespaces -o yaml" > "$LOG_DIR/all-resources.yaml" 2>&1 || true
-        ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR root@"$MASTER_IP" "kubectl get pods -A -o wide" > "$LOG_DIR/pods.txt" 2>&1 || true
-        ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR root@"$MASTER_IP" "kubectl get events --all-namespaces --sort-by='.lastTimestamp'" > "$LOG_DIR/events.txt" 2>&1 || true
+        ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null root@"$MASTER_IP" "kubectl get all --all-namespaces -o yaml" > "$LOG_DIR/all-resources.yaml" 2>&1 || true
+        ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null root@"$MASTER_IP" "kubectl get pods -A -o wide" > "$LOG_DIR/pods.txt" 2>&1 || true
+        ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null root@"$MASTER_IP" "kubectl get events --all-namespaces --sort-by='.lastTimestamp'" > "$LOG_DIR/events.txt" 2>&1 || true
 
         # Velero-specific (if we failed on Step 9+)
         if [[ "$FAILED_STEP" =~ ^[9-]|1[0-2]$ ]]; then
             echo "Collecting Velero debug info..." >&2
-            ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR root@"$MASTER_IP" "kubectl get pods -n velero -o wide" > "$LOG_DIR/velero-pods.txt" 2>&1 || true
-            ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR root@"$MASTER_IP" "kubectl describe application velero -n argocd" > "$LOG_DIR/velero-application.txt" 2>&1 || true
-            ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR root@"$MASTER_IP" "kubectl logs deployment/velero -n velero --tail=200" > "$LOG_DIR/velero-server-logs.txt" 2>&1 || true
-            ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR root@"$MASTER_IP" "kubectl get backupstoragelocations -n velero -o yaml" > "$LOG_DIR/velero-bsl.yaml" 2>&1 || true
+            ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null root@"$MASTER_IP" "kubectl get pods -n velero -o wide" > "$LOG_DIR/velero-pods.txt" 2>&1 || true
+            ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null root@"$MASTER_IP" "kubectl describe application velero -n argocd" > "$LOG_DIR/velero-application.txt" 2>&1 || true
+            ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null root@"$MASTER_IP" "kubectl logs deployment/velero -n velero --tail=200" > "$LOG_DIR/velero-server-logs.txt" 2>&1 || true
+            ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null root@"$MASTER_IP" "kubectl get backupstoragelocations -n velero -o yaml" > "$LOG_DIR/velero-bsl.yaml" 2>&1 || true
         fi
 
         # ArgoCD status
-        ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR root@"$MASTER_IP" "kubectl get applications -n argocd -o yaml" > "$LOG_DIR/argocd-apps.yaml" 2>&1 || true
-        ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR root@"$MASTER_IP" "kubectl describe application sdp-root -n argocd" > "$LOG_DIR/argocd-root-app.txt" 2>&1 || true
+        ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null root@"$MASTER_IP" "kubectl get applications -n argocd -o yaml" > "$LOG_DIR/argocd-apps.yaml" 2>&1 || true
+        ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null root@"$MASTER_IP" "kubectl describe application sdp-root -n argocd" > "$LOG_DIR/argocd-root-app.txt" 2>&1 || true
 
         # Cloud-init status
-        ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR root@"$MASTER_IP" "cloud-init status --long" > "$LOG_DIR/cloud-init-status.txt" 2>&1 || true
+        ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null root@"$MASTER_IP" "cloud-init status --long" > "$LOG_DIR/cloud-init-status.txt" 2>&1 || true
 
         # SSH host key info
         ssh-keyscan -H "$MASTER_IP" >> "$LOG_DIR/host-keys.txt" 2>&1 || true
