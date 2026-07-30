@@ -66,6 +66,7 @@ collect_debug_logs() {
             ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null root@"$MASTER_IP" "kubectl describe application velero -n argocd" > "$LOG_DIR/velero-application.txt" 2>&1 || true
             ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null root@"$MASTER_IP" "kubectl logs deployment/velero -n velero --tail=200" > "$LOG_DIR/velero-server-logs.txt" 2>&1 || true
             ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null root@"$MASTER_IP" "kubectl get backupstoragelocations -n velero -o yaml" > "$LOG_DIR/velero-bsl.yaml" 2>&1 || true
+            ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null root@"$MASTER_IP" "kubectl describe application velero-crds -n argocd" > "$LOG_DIR/velero-crds-application.txt" 2>&1 || true
         fi
 
         # ArgoCD status
