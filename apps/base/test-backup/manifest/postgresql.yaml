@@ -1,0 +1,64 @@
+---
+# PostgreSQL 15 StatefulSet — Velero backup/restore test target
+# 1Gi PVC on Longhorn storage class. Single replica.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-backup
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-test
+  namespace: test-backup
+  labels:
+    app: postgres-test
+spec:
+  serviceName: postgres-test
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-test
+  template:
+    metadata:
+      labels:
+        app: postgres-test
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+              name: postgres
+          env:
+            - name: POSTGRES_DB
+              value: testdb
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              value: testpassword123
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: longhorn
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-test
+  namespace: test-backup
+spec:
+  selector:
+    app: postgres-test
+  ports:
+    - port: 5432
+      targetPort: 5432
+  clusterIP: None

@@ -4,6 +4,7 @@ resources:
   - ../../base/traefik
   - ../../base/longhorn
   - ../../base/velero
+  - ../../base/test-backup
 
 generatorOptions:
   disableNameSuffixHash: true

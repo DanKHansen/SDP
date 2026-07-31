@@ -1,0 +1,23 @@
+---
+# ArgoCD Application: PostgreSQL test workload for Velero backup/restore validation
+# Deployed on every rebuild. Target for test-backup-restore.sh (on-demand).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: test-backup
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/DanKHansen/SDP.git
+    targetRevision: HEAD
+    path: apps/base/test-backup/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: test-backup
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
