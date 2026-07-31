@@ -257,26 +257,26 @@ else
     exit 1
 fi
 
-# STEP 10: Verify Velero Restic DaemonSet — With Retry Loop
-echo -e "${YELLOW}⏳ Checking Velero Restic daemonset...${NC}"
-RESTIC_READY=false
+# STEP 10: Verify Velero Node-Agent DaemonSet — With Retry Loop (FIXED: restic → node-agent)
+echo -e "${YELLOW}⏳ Checking Velero node-agent daemonset...${NC}"
+NODE_AGENT_READY=false
 for _ in $(seq 1 120); do
-    DESIRED=$(ssh_cmd "kubectl get daemonset restic -n velero -o jsonpath='{.status.desiredNumberScheduled}'" 2>/dev/null || echo "0")
-    READY=$(ssh_cmd "kubectl get daemonset restic -n velero -o jsonpath='{.status.numberReady}'" 2>/dev/null || echo "0")
+    DESIRED=$(ssh_cmd "kubectl get daemonset node-agent -n velero -o jsonpath='{.status.desiredNumberScheduled}'" 2>/dev/null || echo "0")
+    READY=$(ssh_cmd "kubectl get daemonset node-agent -n velero -o jsonpath='{.status.numberReady}'" 2>/dev/null || echo "0")
     if [ "$READY" == "$DESIRED" ] && [ "$DESIRED" != "0" ]; then
-        RESTIC_READY=true
+        NODE_AGENT_READY=true
         break
     fi
     echo -n "."
     sleep 5
 done
 
-if [ "$RESTIC_READY" = true ]; then
-    echo -e "\n${GREEN}✅ Restic DaemonSet is running (${READY}/${DESIRED} nodes).${NC}"
+if [ "$NODE_AGENT_READY" = true ]; then
+    echo -e "\n${GREEN}✅ Node-Agent DaemonSet is running (${READY}/${DESIRED} nodes).${NC}"
 else
-    echo -e "\n${RED}❌ Timeout waiting for Restic DaemonSet.${NC}"
+    echo -e "\n${RED}❌ Timeout waiting for Node-Agent DaemonSet.${NC}"
     ssh_cmd "kubectl get pods -n velero" || true
-    ssh_cmd "kubectl describe daemonset restic -n velero" || true
+    ssh_cmd "kubectl describe daemonset node-agent -n velero" || true
     exit 1
 fi
 
@@ -333,11 +333,11 @@ echo "=== VERIFICATION SUMMARY ==="
 [[ "$LONGHORN_READY" == "true" ]] && echo "✅ Longhorn: OK" || echo "❌ Longhorn: FAILED"
 [[ "$TRAEFIK_READY" == "true" ]] && echo "✅ Traefik Ingress: OK" || echo "❌ Traefik Ingress: FAILED"
 [[ "$VELERO_READY" == "true" ]] && echo "✅ Velero: OK" || echo "❌ Velero: FAILED"
-[[ "$RESTIC_READY" == "true" ]] && echo "✅ Restic: OK" || echo "❌ Restic: FAILED"
+[[ "$NODE_AGENT_READY" == "true" ]] && echo "✅ Node-Agent: OK" || echo "❌ Node-Agent: FAILED"
 [[ "$BSL_READY" == "true" ]] && echo "✅ Backup Storage: OK" || echo "❌ Backup Storage: FAILED"
 [[ "$LB_READY" == "true" ]] && echo "✅ LoadBalancer IP: $LB_IP" || echo "❌ LoadBalancer IP: FAILED"
 
-if [[ "$CCM_READY" == "true" && "$ARGOCD_READY" == "true" && "$ARGOCD_APP_SYNCED" == "true" && "$LONGHORN_READY" == "true" && "$TRAEFIK_READY" == "true" && "$VELERO_READY" == "true" && "$RESTIC_READY" == "true" && "$BSL_READY" == "true" && "$LB_READY" == "true" ]]; then
+if [[ "$CCM_READY" == "true" && "$ARGOCD_READY" == "true" && "$ARGOCD_APP_SYNCED" == "true" && "$LONGHORN_READY" == "true" && "$TRAEFIK_READY" == "true" && "$VELERO_READY" == "true" && "$NODE_AGENT_READY" == "true" && "$BSL_READY" == "true" && "$LB_READY" == "true" ]]; then
     echo -e "${GREEN}All systems operational.${NC}"
     exit 0
 else
