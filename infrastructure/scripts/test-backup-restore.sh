@@ -297,6 +297,15 @@ step_resume_argocd() {
 
 # --- Main execution ---
 main() {
+  # Pre-flight: Ensure Velero is ready before test begins (Fix 2)
+  echo -e "${CYAN}⏳ Waiting for Velero deployment to be ready...${NC}"
+  kubectl rollout status deployment/velero -n velero --timeout=5m || {
+    echo -e "${RED}❌ FAIL: Velero never became ready within 5 minutes${NC}"
+    exit 1
+  }
+  echo -e "${GREEN}✅ Velero deployment ready${NC}"
+
+  # Now proceed with actual test steps
   step_prerequisites || return 1
   step_populate_data || return 1
   step_create_backup || return 1

@@ -298,6 +298,14 @@ set -e
 if [[ "$VERIFY_RC" -eq 0 ]]; then
   APPLY_SUCCESS=true
   FAILED_STEP=""
+
+  # Auto-restore kubeconfig from master
+  echo -e "${CYAN}📋 Restoring kubeconfig...${NC}"
+  scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+    "root@$MASTER_IP:/etc/rancher/k3s/k3s.yaml" ~/.kube/config
+  sed -i "s/server: https:\/\/127.0.0.1:6443/server: https:\/\/$MASTER_IP:6443/" ~/.kube/config
+  echo -e "${GREEN}✅ kubeconfig restored ($MASTER_IP)${NC}"
+
   echo -e "${GREEN}🎉 Rebuild cycle complete.${NC}"
 else
   echo -e "${RED}❌ Verification failed. Cleanup will trigger.${NC}"
