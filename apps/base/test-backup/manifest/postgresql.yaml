@@ -44,7 +44,7 @@ spec:
     - metadata:
         name: data
       spec:
-        accessModes: ["ReadWriteOnce"]
+        accessModes: [ "ReadWriteOnce" ]
         storageClassName: longhorn
         resources:
           requests:

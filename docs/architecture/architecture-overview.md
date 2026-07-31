@@ -2,11 +2,14 @@
 
 ## 1. Vision
 
-The Sovereign Data Platform (SDP) is a reference architecture for building **GDPR-compliant**, **cloud-agnostic**, and **fully open-source** data platforms. 
+The Sovereign Data Platform (SDP) is a reference architecture for building **GDPR-compliant**, **cloud-agnostic**, and
+**fully open-source** data platforms.
 
-It is designed to eliminate vendor lock-in while providing the robustness required for enterprise-grade BI, ML, and AI workloads.
+It is designed to eliminate vendor lock-in while providing the robustness required for enterprise-grade BI, ML, and AI
+workloads.
 
-> **Current Status:** This document describes the target architecture. The implementation is currently in "Build-in-Progress" phase as a personal Proof-of-Concept to validate design decisions before client deployment.
+> **Current Status:** This document describes the target architecture. The implementation is currently in
+> "Build-in-Progress" phase as a personal Proof-of-Concept to validate design decisions before client deployment.
 
 ---
 
@@ -37,7 +40,7 @@ The platform must run on any infrastructure:
 ## 3. Technology Stack
 
 | Layer              | Component              | Role                                                | License    |
-|:------------------ |:---------------------- |:--------------------------------------------------- |:---------- |
+|:-------------------|:-----------------------|:----------------------------------------------------|:-----------|
 | **Orchestration**  | Kubernetes (K3s/K8s)   | Container runtime & scheduling                      | Apache 2.0 |
 | **IaC**            | OpenTofu               | Infrastructure provisioning                         | MPL 2.0    |
 | **GitOps**         | ArgoCD                 | Declarative deployment sync                         | Apache 2.0 |
@@ -50,9 +53,11 @@ The platform must run on any infrastructure:
 
 ### Why These Choices?
 
-- **Open Source Neutrality:** Preference for Linux Foundation projects and community-driven forks (OpenTofu instead of Terraform, OpenBao instead of Vault).
+- **Open Source Neutrality:** Preference for Linux Foundation projects and community-driven forks (OpenTofu instead of
+  Terraform, OpenBao instead of Vault).
 - **Functional First:** Leveraging Scala and pure functions for predictable, testable data pipelines.
-- **Modern Lakehouse:** Using Iceberg to bring ACID transactions to low-cost object storage, avoiding expensive proprietary data warehouses.
+- **Modern Lakehouse:** Using Iceberg to bring ACID transactions to low-cost object storage, avoiding expensive
+  proprietary data warehouses.
 
 ---
 
@@ -91,5 +96,4 @@ graph LR
 ⏳ Phase 2: Bootstrap K3s Cluster & Install Core Services (MinIO, Keycloak, OpenBao)
 ⏳ Phase 3: Implement Ingestion Pipeline (NiFi → MinIO)
 ⏳ Phase 4: Add Compute Layer (Trino/Spark) & BI (Superset)
-⏳ Phase 5: Hardening & Compliance Module Validation
-Document Owner: Dan Kjeldstrøm Hansen | Last Updated: June 2026 EOF
+⏳ Phase 5: Hardening & Compliance Module Validation Document Owner: Dan Kjeldstrøm Hansen | Last Updated: June 2026 EOF
