@@ -6,9 +6,6 @@ metadata:
   namespace: argocd
 spec:
   project: default
-  dependsOn:
-    - name: velero-crds
-      namespace: argocd
   source:
     repoURL: https://vmware-tanzu.github.io/helm-charts/
     targetRevision: 12.1.0
@@ -22,22 +19,21 @@ spec:
           pullPolicy: IfNotPresent
 
         configuration:
-          providers:
-            - aws
-          backupStorageLocations:
-            - provider: aws
+          defaultVolumesToFsBackup: true
+          backupStorageLocation:
+            - name: default
+              provider: aws
+              bucket: sdp-backups-hel1
               default: true
               credential:
                 name: cloud
                 key: cloud
-              objectStorage:
-                bucket: sdp-backups-hel1
               config:
-                region: hel1-dc2
-                s3Url: https://hsn.hel1.cloud.netapp.com
+                region: hel1
+                s3Url: https://hel1.your-objectstorage.com
                 s3ForcePathStyle: "true"
-                insecureSkipTLSVerify: false
-          volumeSnapshotLocations: []
+
+        snapshotsEnabled: false
 
         initContainers:
           - name: velero-plugin-for-aws
@@ -51,9 +47,15 @@ spec:
           useSecret: false
           existingSecret: cloud
 
-        restic:
-          enable: true
-          privileged: false
+        deployNodeAgent: true
+        nodeAgent:
+          resources:
+            limits:
+              cpu: 500m
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 512Mi
 
         resources:
           limits:
@@ -63,16 +65,7 @@ spec:
             cpu: 500m
             memory: 1Gi
 
-        resticResources:
-          limits:
-            cpu: 500m
-            memory: 1Gi
-          requests:
-            cpu: 100m
-            memory: 512Mi
-
         logLevel: info
-        deploySchedule: false
   destination:
     server: https://kubernetes.default.svc
     namespace: velero
