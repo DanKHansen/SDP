@@ -10,6 +10,13 @@
 
 set -euo pipefail
 
+# Colors for output (matching rebuild/verify scripts)
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
 # --- Configuration ---
 NAMESPACE="test-backup"
 STATEFULSET="postgres-test"
@@ -32,14 +39,10 @@ if [[ "${1:-}" == "-v" || "${1:-}" == "--verbose" ]]; then
   VERBOSE=true
 fi
 
-# --- Logging ---
-log() {
-  printf "[%s] %s\n" "$(date '+%H:%M:%S')" "$*" >&2
-}
-
+# --- Debug helper (matches verify-cluster.sh style) ---
 debug() {
   if [[ "$VERBOSE" == "true" ]]; then
-    printf "[%s] [DEBUG] %s\n" "$(date '+%H:%M:%S')" "$*" >&2
+    echo -e "${CYAN}[DEBUG] $*${NC}" >&2
   fi
 }
 
@@ -47,14 +50,14 @@ debug() {
 cleanup() {
   local exit_code=$?
   if [[ "$ARGOCD_SUSPENDED" == "true" && $exit_code -ne 0 ]]; then
-    log "WARNING: Failure detected — resuming ArgoCD sync to restore cluster state"
+    echo -e "${YELLOW}⚠️  Failure detected — resuming ArgoCD sync to restore cluster state${NC}"
     kubectl patch application test-backup -n argocd --type='merge' \
       -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}' 2>/dev/null || true
   fi
   if [[ $exit_code -eq 0 ]]; then
-    log "=== PASS: Backup/Restore validation completed successfully ==="
+    echo -e "${GREEN}✅ PASS: Backup/Restore validation completed successfully${NC}"
   else
-    log "=== FAIL: Backup/Restore validation failed at exit code $exit_code ==="
+    echo -e "${RED}❌ FAIL: Backup/Restore validation failed at exit code $exit_code${NC}"
   fi
   exit $exit_code
 }
@@ -69,13 +72,19 @@ wait_for_predicate() {
   while ! "$@" >/dev/null 2>&1; do
     sleep "$POLL_INTERVAL"
     elapsed=$((elapsed + POLL_INTERVAL))
+
+    # Always show dot for progress (matching verify-cluster.sh)
+    echo -n "."
+
     if [[ $elapsed -ge $MAX_WAIT ]]; then
-      log "TIMEOUT: $description (${elapsed}s exceeded ${MAX_WAIT}s limit)"
+      echo -e "\n${RED}❌ TIMEOUT: $description (${elapsed}s exceeded ${MAX_WAIT}s limit)${NC}"
       return 1
     fi
-    debug "Waiting: $description (${elapsed}s/${MAX_WAIT}s)"
+    if [[ "$VERBOSE" == "true" ]]; then
+      debug "Waiting: $description (${elapsed}s/${MAX_WAIT}s)"
+    fi
   done
-  log "READY: $description (${elapsed}s)"
+  echo -e "${GREEN}✅ READY: $description (${elapsed}s)${NC}"
 }
 
 wait_for_velero_phase() {
@@ -89,70 +98,76 @@ wait_for_velero_phase() {
     status="$(kubectl get "$resource" "$name" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")"
 
     if [[ "$status" == "$expected_phase" ]]; then
-      log "VELERO: $resource '$name' reached phase: $status (${elapsed}s)"
+      echo -e "${GREEN}✅ VELERO: $resource '$name' reached phase: $status (${elapsed}s)${NC}"
       return 0
     fi
 
     if [[ "$status" == "Failed" || "$status" == "PartiallyFailed" ]]; then
-      log "ERROR: $resource '$name' entered terminal phase: $status"
+      echo -e "${RED}❌ ERROR: $resource '$name' entered terminal phase: $status${NC}"
       return 1
     fi
 
     sleep "$POLL_INTERVAL"
     elapsed=$((elapsed + POLL_INTERVAL))
+
+    # Always show dot for progress
+    echo -n "."
+
     if [[ $elapsed -ge $MAX_WAIT ]]; then
-      log "TIMEOUT: $resource '$name' never reached $expected_phase (last status: ${status:-none})"
+      echo -e "\n${RED}❌ TIMEOUT: $resource '$name' never reached $expected_phase (last status: ${status:-none})${NC}"
       return 1
     fi
-    debug "Velero $resource status: ${status:-pending} (${elapsed}s)"
+    if [[ "$VERBOSE" == "true" ]]; then
+      debug "Velero $resource status: ${status:-pending} (${elapsed}s)"
+    fi
   done
 }
 
 # --- Step 1: Prerequisites ---
 step_prerequisites() {
-  log "=== Step 1: Verify Prerequisites ==="
+  echo -e "${YELLOW}⏳ Step 1: Verify Prerequisites...${NC}"
 
   local velero_pods node_agent bsl_phase test_pods
 
   velero_pods="$(kubectl get deployment velero -n velero -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")"
   if [[ "$velero_pods" -lt 1 ]]; then
-    log "FAIL: Velero deployment not ready ($velero_pods/1 replicas)"
+    echo -e "${RED}❌ FAIL: Velero deployment not ready ($velero_pods/1 replicas)${NC}"
     return 1
   fi
   debug "Velero: ${velero_pods}/1 replicas"
 
   node_agent="$(kubectl get daemonset node-agent -n velero -o jsonpath='{.status.numberReady}' 2>/dev/null || echo "0")"
   if [[ "$node_agent" -lt 1 ]]; then
-    log "FAIL: Node-agent daemonset not ready ($node_agent pods)"
+    echo -e "${RED}❌ FAIL: Node-agent daemonset not ready ($node_agent pods)${NC}"
     return 1
   fi
   debug "Node-agent: ${node_agent} pods"
 
   bsl_phase="$(kubectl get backupstoragelocation -n velero default -o jsonpath='{.status.phase}' 2>/dev/null || echo "")"
   if [[ "$bsl_phase" != "Available" ]]; then
-    log "FAIL: Backup Storage Location not Available ($bsl_phase)"
+    echo -e "${RED}❌ FAIL: Backup Storage Location not Available ($bsl_phase)${NC}"
     return 1
   fi
   debug "BSL: $bsl_phase"
 
   test_pods="$(kubectl get statefulset "$STATEFULSET" -n "$NAMESPACE" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "")"
   if [[ -z "$test_pods" || "$test_pods" -lt 1 ]]; then
-    log "FAIL: Test workload not running ($STATEFULSET not ready)"
+    echo -e "${RED}❌ FAIL: Test workload not running ($STATEFULSET not ready)${NC}"
     return 1
   fi
   debug "Test workload: ${test_pods}/1 replicas"
 
-  log "All prerequisites verified"
+  echo -e "${GREEN}✅ All prerequisites verified${NC}"
 }
 
 # --- Step 2: Populate data ---
 step_populate_data() {
-  log "=== Step 2: Populate Test Data ==="
+  echo -e "${YELLOW}⏳ Step 2: Populate Test Data...${NC}"
 
   wait_for_predicate "Pod ${POD_NAME} Running" \
     bash -c "kubectl get pod '$POD_NAME' -n '$NAMESPACE' -o jsonpath='{.status.phase}' 2>/dev/null | grep -q 'Running'"
 
-  log "Inserting marker: $MARKER"
+  echo -e "${CYAN}📝 Inserting marker: $MARKER${NC}"
 
   kubectl exec -n "$NAMESPACE" "$POD_NAME" -- \
     psql -U "$DB_USER" -d "$DB_NAME" -c "DROP TABLE IF EXISTS ${TEST_TABLE};" 2>/dev/null || true
@@ -173,18 +188,18 @@ CREATE TABLE ${TEST_TABLE} (
     psql -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT COUNT(*) FROM ${TEST_TABLE} WHERE marker = '${MARKER}';" 2>/dev/null | tr -d ' ')"
 
   if [[ "${row_count:-0}" -ne 1 ]]; then
-    log "FAIL: Data insert verification failed (count: ${row_count:-0})"
+    echo -e "${RED}❌ FAIL: Data insert verification failed (count: ${row_count:-0})${NC}"
     return 1
   fi
 
-  log "Data inserted and verified (marker: $MARKER)"
+  echo -e "${GREEN}✅ Data inserted and verified (marker: $MARKER)${NC}"
 }
 
 # --- Step 3: Create backup ---
 step_create_backup() {
-  log "=== Step 3: Create Velero Backup ==="
+  echo -e "${YELLOW}⏳ Step 3: Create Velero Backup...${NC}"
 
-  log "Creating backup: $BACKUP_NAME (namespace: $NAMESPACE)"
+  echo -e "${CYAN}📦 Creating backup: $BACKUP_NAME (namespace: $NAMESPACE)${NC}"
   velero backup create "$BACKUP_NAME" \
     --include-namespaces "$NAMESPACE" \
     --wait \
@@ -199,29 +214,29 @@ step_create_backup() {
 
 # --- Step 4: Delete workload ---
 step_delete_workload() {
-  log "=== Step 4: Delete Test Workload ==="
+  echo -e "${YELLOW}⏳ Step 4: Delete Test Workload...${NC}"
 
-  log "Suspending ArgoCD auto-sync for test-backup"
+  echo -e "${CYAN}⏸️  Suspending ArgoCD auto-sync for test-backup${NC}"
   kubectl patch application test-backup -n argocd \
     --type='json' \
     -p '[{"op":"remove","path":"/spec/syncPolicy"}]' 2>/dev/null || true
 
   ARGOCD_SUSPENDED=true
 
-  log "Deleting namespace: $NAMESPACE"
+  echo -e "${CYAN}🗑️  Deleting namespace: $NAMESPACE${NC}"
   kubectl delete namespace "$NAMESPACE" --ignore-not-found=true
 
   wait_for_predicate "Namespace $NAMESPACE deleted" \
     bash -c "! kubectl get namespace '$NAMESPACE' >/dev/null 2>&1"
 
-  log "Namespace deleted"
+  echo -e "${GREEN}✅ Namespace deleted${NC}"
 }
 
 # --- Step 5: Restore ---
 step_restore_backup() {
-  log "=== Step 5: Restore from Backup ==="
+  echo -e "${YELLOW}⏳ Step 5: Restore from Backup...${NC}"
 
-  log "Creating restore: $RESTORE_NAME from $BACKUP_NAME"
+  echo -e "${CYAN}♻️  Creating restore: $RESTORE_NAME from $BACKUP_NAME${NC}"
   velero restore create "$RESTORE_NAME" \
     --from-backup "$BACKUP_NAME" \
     --wait \
@@ -237,7 +252,7 @@ step_restore_backup() {
 
 # --- Step 6: Verify restored workload ---
 step_verify_restored() {
-  log "=== Step 6: Verify Restored Workload ==="
+  echo -e "${YELLOW}⏳ Step 6: Verify Restored Workload...${NC}"
 
   wait_for_predicate "StatefulSet $STATEFULSET exists" \
     bash -c "kubectl get statefulset '$STATEFULSET' -n '$NAMESPACE' >/dev/null 2>&1"
@@ -249,35 +264,35 @@ step_verify_restored() {
     bash -c "kubectl get pod '$POD_NAME' -n '$NAMESPACE' -o jsonpath='{.status.phase}' 2>/dev/null | grep -q 'Running'"
 
   sleep 5
-  log "Restored workload is running"
+  echo -e "${GREEN}✅ Restored workload is running${NC}"
 }
 
 # --- Step 7: Verify data integrity ---
 step_verify_data() {
-  log "=== Step 7: Verify Data Integrity ==="
+  echo -e "${YELLOW}⏳ Step 7: Verify Data Integrity...${NC}"
 
   local restored_marker
   restored_marker="$(kubectl exec -n "$NAMESPACE" "$POD_NAME" -- \
     psql -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT marker FROM ${TEST_TABLE} LIMIT 1;" 2>/dev/null | tr -d ' \n')"
 
   if [[ "$restored_marker" == "$MARKER" ]]; then
-    log "PASS: Data integrity verified (marker: $restored_marker)"
+    echo -e "${GREEN}✅ PASS: Data integrity verified (marker: $restored_marker)${NC}"
   else
-    log "FAIL: Data integrity mismatch — expected '$MARKER', got '${restored_marker:-empty}'"
+    echo -e "${RED}❌ FAIL: Data integrity mismatch — expected '$MARKER', got '${restored_marker:-empty}'${NC}"
     return 1
   fi
 }
 
 # --- Step 8: Resume ArgoCD ---
 step_resume_argocd() {
-  log "=== Step 8: Resume ArgoCD ==="
+  echo -e "${YELLOW}⏳ Step 8: Resume ArgoCD...${NC}"
 
   kubectl patch application test-backup -n argocd \
     --type='merge' \
     -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}' 2>/dev/null || true
 
   ARGOCD_SUSPENDED=false
-  log "ArgoCD auto-sync resumed"
+  echo -e "${GREEN}✅ ArgoCD auto-sync resumed${NC}"
 }
 
 # --- Main execution ---
@@ -291,13 +306,13 @@ main() {
   step_verify_data || return 1
   step_resume_argocd || return 1
 
-  log ""
-  log "========================================"
-  log "  Phase 0 Final Validation: PASS"
-  log "========================================"
-  log "Backup:    $BACKUP_NAME"
-  log "Restore:   $RESTORE_NAME"
-  log "========================================"
+  echo ""
+  echo -e "${GREEN}======================================${NC}"
+  echo -e "${GREEN}  🎉 Phase 0 Final Validation: PASS${NC}"
+  echo -e "${GREEN}======================================${NC}"
+  echo -e "${CYAN}Backup:    $BACKUP_NAME${NC}"
+  echo -e "${CYAN}Restore:   $RESTORE_NAME${NC}"
+  echo -e "${GREEN}======================================${NC}"
 }
 
 main
