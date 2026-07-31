@@ -11,7 +11,7 @@ spec:
   source:
     repoURL: https://github.com/DanKHansen/SDP.git
     targetRevision: HEAD
-    path: apps/base/test-backup/manifests
+    path: apps/base/test-backup/manifest
   destination:
     server: https://kubernetes.default.svc
     namespace: test-backup
