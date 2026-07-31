@@ -1,11 +1,7 @@
 ---
 # PostgreSQL 15 StatefulSet — Velero backup/restore test target
 # 1Gi PVC on Longhorn storage class. Single replica.
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: test-backup
----
+# Namespace managed by ArgoCD via CreateNamespace=true sync option.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
