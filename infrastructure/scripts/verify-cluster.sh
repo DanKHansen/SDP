@@ -12,8 +12,8 @@ echo -e "${YELLOW}🚀 Starting SDP Cluster Verification...${NC}"
 
 # 1. Get the Master IP
 if [ -z "$MASTER_IP" ]; then
-    echo "Detecting Master IP..."
-    read -rp "Enter Master Public IP (from tofu apply output): " MASTER_IP
+  echo "Detecting Master IP..."
+  read -rp "Enter Master Public IP (from tofu apply output): " MASTER_IP
 fi
 
 # Clear stale SSH keys for this IP
@@ -23,7 +23,7 @@ echo "Targeting Master: $MASTER_IP"
 
 # Helper function for SSH
 ssh_cmd() {
-    ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o LogLevel=ERROR root@"$MASTER_IP" "$1"
+  ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o LogLevel=ERROR root@"$MASTER_IP" "$1"
 }
 
 # 2. Wait for K3s to be ready (kubectl accessible)
@@ -31,13 +31,13 @@ echo -e "${YELLOW}⏳ Waiting for K3s cluster to be ready...${NC}"
 MAX_WAIT=300
 COUNT=0
 while ! ssh_cmd "kubectl get nodes >/dev/null 2>&1"; do
-    echo -n "."
-    sleep 5
-    COUNT=$((COUNT+5))
-    if [ "$COUNT" -ge "$MAX_WAIT" ]; then
-        echo -e "\n${RED}❌ Timeout waiting for K3s cluster.${NC}"
-        exit 1
-    fi
+  echo -n "."
+  sleep 5
+  COUNT=$((COUNT + 5))
+  if [ "$COUNT" -ge "$MAX_WAIT" ]; then
+    echo -e "\n${RED}❌ Timeout waiting for K3s cluster.${NC}"
+    exit 1
+  fi
 done
 echo -e "\n${GREEN}✅ K3s cluster is responsive.${NC}"
 
@@ -49,124 +49,126 @@ ALL_READY=false
 EXPECTED_NODES="${EXPECTED_NODES:-3}"
 
 while [ "$COUNT" -lt "$MAX_WAIT" ]; do
-    NODE_STATUS=$(ssh_cmd "kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}:{.status.conditions[?(@.type==\"Ready\")].status}{\"\\n\"}{end}'" 2>/dev/null || echo "")
+  NODE_STATUS=$(ssh_cmd "kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}:{.status.conditions[?(@.type==\"Ready\")].status}{\"\\n\"}{end}'" 2>/dev/null || echo "")
 
-    # Count actual nodes returned
-    NODE_COUNT=$(echo "$NODE_STATUS" | grep -c ":" || echo "0")
+  # Count actual nodes returned
+  NODE_COUNT=$(echo "$NODE_STATUS" | grep -c ":" || echo "0")
 
-    # Both conditions: enough nodes AND all ready
-    if [ "$NODE_COUNT" -ge "$EXPECTED_NODES" ] && ! echo "$NODE_STATUS" | grep -q ":False\|:Unknown"; then
-        ALL_READY=true
-        break
-    fi
+  # Both conditions: enough nodes AND all ready
+  if [ "$NODE_COUNT" -ge "$EXPECTED_NODES" ] && ! echo "$NODE_STATUS" | grep -q ":False\|:Unknown"; then
+    ALL_READY=true
+    break
+  fi
 
-    echo -n "."
-    sleep 5
-    COUNT=$((COUNT+5))
+  echo -n "."
+  sleep 5
+  COUNT=$((COUNT + 5))
 done
 
 if [ "$ALL_READY" = true ]; then
-    echo -e "\n${GREEN}✅ All nodes are Ready (${NODE_COUNT}/${EXPECTED_NODES}).${NC}"
+  echo -e "\n${GREEN}✅ All nodes are Ready (${NODE_COUNT}/${EXPECTED_NODES}).${NC}"
 else
-    echo -e "\n${RED}❌ Timeout waiting for nodes to be Ready.${NC}"
-    ssh_cmd "kubectl get nodes" || true
-    exit 1
+  echo -e "\n${RED}❌ Timeout waiting for nodes to be Ready.${NC}"
+  ssh_cmd "kubectl get nodes" || true
+  exit 1
 fi
 
 # 4. Verify Hetzner CCM (With Retry Loop) — FIXED: Empty-value guard
 echo -e "${YELLOW}⏳ Checking Hetzner Cloud Controller Manager...${NC}"
 CCM_READY=false
 for _ in $(seq 1 60); do
-    COMBINED=$(ssh_cmd "kubectl get deployment hcloud-cloud-controller-manager -n kube-system -o jsonpath='{.spec.replicas}:{.status.availableReplicas}'" 2>/dev/null || echo "")
-    DESIRED="${COMBINED%%:*}"
-    AVAILABLE="${COMBINED##*:}"
-    # Guard: reject empty values (deployment doesn't exist yet)
-    if [ -n "$DESIRED" ] && [ "$DESIRED" != "0" ] && [ "$AVAILABLE" == "$DESIRED" ]; then
-        CCM_READY=true
-        break
-    fi
-    echo -n "."
-    sleep 5
+  COMBINED=$(ssh_cmd "kubectl get deployment hcloud-cloud-controller-manager -n kube-system -o jsonpath='{.spec.replicas}:{.status.availableReplicas}'" 2>/dev/null || echo "")
+  DESIRED="${COMBINED%%:*}"
+  AVAILABLE="${COMBINED##*:}"
+  # Guard: reject empty values (deployment doesn't exist yet)
+  if [ -n "$DESIRED" ] && [ "$DESIRED" != "0" ] && [ "$AVAILABLE" == "$DESIRED" ]; then
+    CCM_READY=true
+    break
+  fi
+  echo -n "."
+  sleep 5
 done
 
 if [ "$CCM_READY" = true ]; then
-    echo -e "\n${GREEN}✅ Hetzner CCM is running (${AVAILABLE}/${DESIRED}).${NC}"
+  echo -e "\n${GREEN}✅ Hetzner CCM is running (${AVAILABLE}/${DESIRED}).${NC}"
 else
-    echo -e "\n${RED}❌ Timeout waiting for Hetzner CCM.${NC}"
-    ssh_cmd "kubectl describe deployment hcloud-cloud-controller-manager -n kube-system" || true
-    exit 1
+  echo -e "\n${RED}❌ Timeout waiting for Hetzner CCM.${NC}"
+  ssh_cmd "kubectl describe deployment hcloud-cloud-controller-manager -n kube-system" || true
+  exit 1
 fi
 
 # 5. Verify ArgoCD (With Retry Loop) — FIXED: Empty-value guard
 echo -e "${YELLOW}⏳ Checking ArgoCD Server...${NC}"
 ARGOCD_READY=false
 for _ in $(seq 1 60); do
-    COMBINED=$(ssh_cmd "kubectl get deployment argocd-server -n argocd -o jsonpath='{.spec.replicas}:{.status.availableReplicas}'" 2>/dev/null || echo "")
-    DESIRED="${COMBINED%%:*}"
-    AVAILABLE="${COMBINED##*:}"
-    # Guard: reject empty values (deployment doesn't exist yet)
-    if [ -n "$DESIRED" ] && [ "$DESIRED" != "0" ] && [ "$AVAILABLE" == "$DESIRED" ]; then
-        ARGOCD_READY=true
-        break
-    fi
-    echo -n "."
-    sleep 5
+  COMBINED=$(ssh_cmd "kubectl get deployment argocd-server -n argocd -o jsonpath='{.spec.replicas}:{.status.availableReplicas}'" 2>/dev/null || echo "")
+  DESIRED="${COMBINED%%:*}"
+  AVAILABLE="${COMBINED##*:}"
+  # Guard: reject empty values (deployment doesn't exist yet)
+  if [ -n "$DESIRED" ] && [ "$DESIRED" != "0" ] && [ "$AVAILABLE" == "$DESIRED" ]; then
+    ARGOCD_READY=true
+    break
+  fi
+  echo -n "."
+  sleep 5
 done
 
 if [ "$ARGOCD_READY" = true ]; then
-    echo -e "\n${GREEN}✅ ArgoCD Server is running (${AVAILABLE}/${DESIRED}).${NC}"
+  echo -e "\n${GREEN}✅ ArgoCD Server is running (${AVAILABLE}/${DESIRED}).${NC}"
 else
-    echo -e "\n${RED}❌ Timeout waiting for ArgoCD Server.${NC}"
-    ssh_cmd "kubectl get pods -n argocd" || true
-    ssh_cmd "kubectl describe deployment argocd-server -n argocd" || true
-    exit 1
+  echo -e "\n${RED}❌ Timeout waiting for ArgoCD Server.${NC}"
+  ssh_cmd "kubectl get pods -n argocd" || true
+  ssh_cmd "kubectl describe deployment argocd-server -n argocd" || true
+  exit 1
 fi
 
 # 6. Verify ArgoCD Root Application Sync
 echo -e "${YELLOW}⏳ Checking ArgoCD Root Application sync status...${NC}"
 ARGOCD_APP_SYNCED=false
 for _ in $(seq 1 60); do
-    COMBINED=$(ssh_cmd "kubectl get application sdp-root -n argocd -o jsonpath='{.status.sync.status}:{.status.health.status}'" 2>/dev/null || echo "")
-    SYNC_STATUS="${COMBINED%%:*}"
-    HEALTH_STATUS="${COMBINED##*:}"
-    if [ "$SYNC_STATUS" == "Synced" ] && [ "$HEALTH_STATUS" == "Healthy" ]; then
-        ARGOCD_APP_SYNCED=true
-        break
-    fi
-    echo -n "."
-    sleep 5
+  COMBINED=$(ssh_cmd "kubectl get application sdp-root -n argocd -o jsonpath='{.status.sync.status}:{.status.health.status}'" 2>/dev/null || echo "")
+  SYNC_STATUS="${COMBINED%%:*}"
+  HEALTH_STATUS="${COMBINED##*:}"
+  if [ "$SYNC_STATUS" == "Synced" ] && [ "$HEALTH_STATUS" == "Healthy" ]; then
+    ARGOCD_APP_SYNCED=true
+    break
+  fi
+  echo -n "."
+  sleep 5
 done
 
 if [ "$ARGOCD_APP_SYNCED" = true ]; then
-    echo -e "\n${GREEN}✅ ArgoCD Root Application is Synced and Healthy.${NC}"
+  echo -e "\n${GREEN}✅ ArgoCD Root Application is Synced and Healthy.${NC}"
 else
-    echo -e "\n${RED}❌ Timeout waiting for ArgoCD Root Application sync.${NC}"
-    ssh_cmd "kubectl get application sdp-root -n argocd -o yaml" || true
-    exit 1
+  echo -e "\n${RED}❌ Timeout waiting for ArgoCD Root Application sync.${NC}"
+  ssh_cmd "kubectl get application sdp-root -n argocd -o yaml" || true
+  exit 1
 fi
 
 # 6a. Wait for child ArgoCD Applications to sync
 echo -e "${YELLOW}⏳ Waiting for child ArgoCD Applications to sync...${NC}"
 CHILD_APPS_SYNCED=false
-for _ in $(seq 1 120); do  # ← Changed from 60 to 120
-    CHILD_STATUS=$(ssh_cmd "kubectl get applications -n argocd -o jsonpath='{range .items[*]}{.metadata.name}:{.status.sync.status}:{.status.health.status}{\"\\n\"}{end}'" 2>/dev/null || echo "")
+for _ in $(# ← Changed from 60 to 120
+  seq 1 120
+); do
+  CHILD_STATUS=$(ssh_cmd "kubectl get applications -n argocd -o jsonpath='{range .items[*]}{.metadata.name}:{.status.sync.status}:{.status.health.status}{\"\\n\"}{end}'" 2>/dev/null || echo "")
 
-    # Check if all apps (excluding sdp-root) are Synced
-    UNSYNCED=$(echo "$CHILD_STATUS" | grep -v "^sdp-root:" | grep -v ":Synced:" || echo "")
+  # Check if all apps (excluding sdp-root) are Synced
+  UNSYNCED=$(echo "$CHILD_STATUS" | grep -v "^sdp-root:" | grep -v ":Synced:" || echo "")
 
-    if [[ -z "$UNSYNCED" ]]; then
-        CHILD_APPS_SYNCED=true
-        break
-    fi
-    echo -n "."
-    sleep 5
+  if [[ -z "$UNSYNCED" ]]; then
+    CHILD_APPS_SYNCED=true
+    break
+  fi
+  echo -n "."
+  sleep 5
 done
 
 if [[ "$CHILD_APPS_SYNCED" != true ]]; then
-    echo -e "\n${RED}❌ Timeout waiting for child ArgoCD Applications to sync.${NC}"
-    ssh_cmd "kubectl get applications -A" || true
-    ssh_cmd "kubectl describe application traefik -n argocd" || true  # ← NEW: detailed status
-    exit 1
+  echo -e "\n${RED}❌ Timeout waiting for child ArgoCD Applications to sync.${NC}"
+  ssh_cmd "kubectl get applications -A" || true
+  ssh_cmd "kubectl describe application traefik -n argocd" || true # ← NEW: detailed status
+  exit 1
 fi
 echo -e "${GREEN}✅ All child ArgoCD Applications are Synced.${NC}"
 
@@ -174,154 +176,154 @@ echo -e "${GREEN}✅ All child ArgoCD Applications are Synced.${NC}"
 echo -e "${YELLOW}⏳ Checking traefik namespace has deployments...${NC}"
 INGRESS_PODS=$(ssh_cmd "kubectl get pods -n traefik --no-headers 2>/dev/null | wc -l" || echo "0")
 if [ "$INGRESS_PODS" -eq 0 ]; then
-    echo -e "\n${RED}❌ No pods in traefik namespace (deployment may have failed)${NC}"
-    echo -e "${YELLOW}📋 Diagnostic dump:${NC}"
-    ssh_cmd "echo '=== ArgoCD Applications ==='; kubectl get applications -A 2>&1; echo '---'; \
+  echo -e "\n${RED}❌ No pods in traefik namespace (deployment may have failed)${NC}"
+  echo -e "${YELLOW}📋 Diagnostic dump:${NC}"
+  ssh_cmd "echo '=== ArgoCD Applications ==='; kubectl get applications -A 2>&1; echo '---'; \
              echo '=== traefik namespace resources ==='; kubectl get all -n traefik 2>&1; echo '---'; \
              echo '=== ArgoCD Root Application Status ==='; kubectl describe application -n argocd sdp-root 2>&1 | tail -30" || true
-    exit 1
+  exit 1
 else
-    echo -e "${GREEN}✅ Found $INGRESS_PODS pod(s) in traefik namespace${NC}"
+  echo -e "${GREEN}✅ Found $INGRESS_PODS pod(s) in traefik namespace${NC}"
 fi
 
 # 7. Verify Longhorn (Dynamic check)
 echo -e "${YELLOW}⏳ Checking Longhorn Manager...${NC}"
 LONGHORN_READY=false
 for _ in $(seq 1 120); do
-    DESIRED=$(ssh_cmd "kubectl get daemonset longhorn-manager -n longhorn-system -o jsonpath='{.status.desiredNumberScheduled}'" 2>/dev/null || echo "0")
-    READY=$(ssh_cmd "kubectl get daemonset longhorn-manager -n longhorn-system -o jsonpath='{.status.numberReady}'" 2>/dev/null || echo "0")
-    if [ "$READY" == "$DESIRED" ] && [ "$DESIRED" != "0" ]; then
-        LONGHORN_READY=true
-        break
-    fi
-    echo -n "."
-    sleep 5
+  DESIRED=$(ssh_cmd "kubectl get daemonset longhorn-manager -n longhorn-system -o jsonpath='{.status.desiredNumberScheduled}'" 2>/dev/null || echo "0")
+  READY=$(ssh_cmd "kubectl get daemonset longhorn-manager -n longhorn-system -o jsonpath='{.status.numberReady}'" 2>/dev/null || echo "0")
+  if [ "$READY" == "$DESIRED" ] && [ "$DESIRED" != "0" ]; then
+    LONGHORN_READY=true
+    break
+  fi
+  echo -n "."
+  sleep 5
 done
 
 if [ "$LONGHORN_READY" = true ]; then
-    echo -e "\n${GREEN}✅ Longhorn Manager is running (${READY}/${DESIRED}).${NC}"
+  echo -e "\n${GREEN}✅ Longhorn Manager is running (${READY}/${DESIRED}).${NC}"
 else
-    echo -e "\n${RED}❌ Timeout waiting for Longhorn Manager.${NC}"
-    ssh_cmd "kubectl get pods -n longhorn-system" || true
-    ssh_cmd "kubectl describe daemonset longhorn-manager -n longhorn-system" || true
-    exit 1
+  echo -e "\n${RED}❌ Timeout waiting for Longhorn Manager.${NC}"
+  ssh_cmd "kubectl get pods -n longhorn-system" || true
+  ssh_cmd "kubectl describe daemonset longhorn-manager -n longhorn-system" || true
+  exit 1
 fi
 
 # 8. Verify Traefik Ingress Controller (Dynamic check) — FIXED: Empty-value guard
 echo -e "${YELLOW}⏳ Checking Traefik Ingress Controller...${NC}"
 TRAEFIK_READY=false
 for _ in $(seq 1 120); do
-    COMBINED=$(ssh_cmd "kubectl get deployment traefik -n traefik -o jsonpath='{.spec.replicas}:{.status.availableReplicas}'" 2>/dev/null || echo "")
-    DESIRED="${COMBINED%%:*}"
-    AVAILABLE="${COMBINED##*:}"
-    # Guard: reject empty values (deployment doesn't exist yet)
-    if [ -n "$DESIRED" ] && [ "$DESIRED" != "0" ] && [ "$AVAILABLE" == "$DESIRED" ]; then
-        TRAEFIK_READY=true
-        break
-    fi
-    echo -n "."
-    sleep 5
+  COMBINED=$(ssh_cmd "kubectl get deployment traefik -n traefik -o jsonpath='{.spec.replicas}:{.status.availableReplicas}'" 2>/dev/null || echo "")
+  DESIRED="${COMBINED%%:*}"
+  AVAILABLE="${COMBINED##*:}"
+  # Guard: reject empty values (deployment doesn't exist yet)
+  if [ -n "$DESIRED" ] && [ "$DESIRED" != "0" ] && [ "$AVAILABLE" == "$DESIRED" ]; then
+    TRAEFIK_READY=true
+    break
+  fi
+  echo -n "."
+  sleep 5
 done
 
 if [ "$TRAEFIK_READY" = true ]; then
-    echo -e "\n${GREEN}✅ Traefik Ingress Controller is running (${AVAILABLE}/${DESIRED}).${NC}"
+  echo -e "\n${GREEN}✅ Traefik Ingress Controller is running (${AVAILABLE}/${DESIRED}).${NC}"
 else
-    echo -e "\n${RED}❌ Timeout waiting for Traefik Ingress Controller.${NC}"
-    ssh_cmd "kubectl get pods -n traefik" || true
-    ssh_cmd "kubectl describe deployment traefik -n traefik" || true
-    exit 1
+  echo -e "\n${RED}❌ Timeout waiting for Traefik Ingress Controller.${NC}"
+  ssh_cmd "kubectl get pods -n traefik" || true
+  ssh_cmd "kubectl describe deployment traefik -n traefik" || true
+  exit 1
 fi
 
 # STEP 9: Verify Velero Deployment — With Retry Loop
 echo -e "${YELLOW}⏳ Checking Velero deployment...${NC}"
 VELERO_READY=false
 for _ in $(seq 1 120); do
-    COMBINED=$(ssh_cmd "kubectl get deployment velero -n velero -o jsonpath='{.spec.replicas}:{.status.availableReplicas}'" 2>/dev/null || echo "")
-    DESIRED="${COMBINED%%:*}"
-    AVAILABLE="${COMBINED##*:}"
-    # Guard: reject empty values (deployment doesn't exist yet)
-    if [ -n "$DESIRED" ] && [ "$DESIRED" != "0" ] && [ "$AVAILABLE" == "$DESIRED" ]; then
-        VELERO_READY=true
-        break
-    fi
-    echo -n "."
-    sleep 5
+  COMBINED=$(ssh_cmd "kubectl get deployment velero -n velero -o jsonpath='{.spec.replicas}:{.status.availableReplicas}'" 2>/dev/null || echo "")
+  DESIRED="${COMBINED%%:*}"
+  AVAILABLE="${COMBINED##*:}"
+  # Guard: reject empty values (deployment doesn't exist yet)
+  if [ -n "$DESIRED" ] && [ "$DESIRED" != "0" ] && [ "$AVAILABLE" == "$DESIRED" ]; then
+    VELERO_READY=true
+    break
+  fi
+  echo -n "."
+  sleep 5
 done
 
 if [ "$VELERO_READY" = true ]; then
-    echo -e "\n${GREEN}✅ Velero Server is running (${AVAILABLE}/${DESIRED}).${NC}"
+  echo -e "\n${GREEN}✅ Velero Server is running (${AVAILABLE}/${DESIRED}).${NC}"
 else
-    echo -e "\n${RED}❌ Timeout waiting for Velero Server.${NC}"
-    ssh_cmd "kubectl get pods -n velero" || true
-    ssh_cmd "kubectl describe deployment velero -n velero" || true
-    exit 1
+  echo -e "\n${RED}❌ Timeout waiting for Velero Server.${NC}"
+  ssh_cmd "kubectl get pods -n velero" || true
+  ssh_cmd "kubectl describe deployment velero -n velero" || true
+  exit 1
 fi
 
 # STEP 10: Verify Velero Node-Agent DaemonSet — With Retry Loop (FIXED: restic → node-agent)
 echo -e "${YELLOW}⏳ Checking Velero node-agent daemonset...${NC}"
 NODE_AGENT_READY=false
 for _ in $(seq 1 120); do
-    DESIRED=$(ssh_cmd "kubectl get daemonset node-agent -n velero -o jsonpath='{.status.desiredNumberScheduled}'" 2>/dev/null || echo "0")
-    READY=$(ssh_cmd "kubectl get daemonset node-agent -n velero -o jsonpath='{.status.numberReady}'" 2>/dev/null || echo "0")
-    if [ "$READY" == "$DESIRED" ] && [ "$DESIRED" != "0" ]; then
-        NODE_AGENT_READY=true
-        break
-    fi
-    echo -n "."
-    sleep 5
+  DESIRED=$(ssh_cmd "kubectl get daemonset node-agent -n velero -o jsonpath='{.status.desiredNumberScheduled}'" 2>/dev/null || echo "0")
+  READY=$(ssh_cmd "kubectl get daemonset node-agent -n velero -o jsonpath='{.status.numberReady}'" 2>/dev/null || echo "0")
+  if [ "$READY" == "$DESIRED" ] && [ "$DESIRED" != "0" ]; then
+    NODE_AGENT_READY=true
+    break
+  fi
+  echo -n "."
+  sleep 5
 done
 
 if [ "$NODE_AGENT_READY" = true ]; then
-    echo -e "\n${GREEN}✅ Node-Agent DaemonSet is running (${READY}/${DESIRED} nodes).${NC}"
+  echo -e "\n${GREEN}✅ Node-Agent DaemonSet is running (${READY}/${DESIRED} nodes).${NC}"
 else
-    echo -e "\n${RED}❌ Timeout waiting for Node-Agent DaemonSet.${NC}"
-    ssh_cmd "kubectl get pods -n velero" || true
-    ssh_cmd "kubectl describe daemonset node-agent -n velero" || true
-    exit 1
+  echo -e "\n${RED}❌ Timeout waiting for Node-Agent DaemonSet.${NC}"
+  ssh_cmd "kubectl get pods -n velero" || true
+  ssh_cmd "kubectl describe daemonset node-agent -n velero" || true
+  exit 1
 fi
 
 # STEP 11: Verify Backup Storage Location — With Retry Loop
 echo -e "${YELLOW}⏳ Checking Velero backup storage location...${NC}"
 BSL_READY=false
 for _ in $(seq 1 120); do
-    BSL_STATUS=$(ssh_cmd "kubectl get backupstoragelocations.velero.io/default -n velero -o jsonpath='{.status.phase}'" 2>/dev/null || echo "")
-    if [ "$BSL_STATUS" == "Available" ]; then
-        BSL_READY=true
-        break
-    fi
-    echo -n "."
-    sleep 5
+  BSL_STATUS=$(ssh_cmd "kubectl get backupstoragelocations.velero.io/default -n velero -o jsonpath='{.status.phase}'" 2>/dev/null || echo "")
+  if [ "$BSL_STATUS" == "Available" ]; then
+    BSL_READY=true
+    break
+  fi
+  echo -n "."
+  sleep 5
 done
 
 if [ "$BSL_READY" = true ]; then
-    echo -e "\n${GREEN}✅ Backup Storage Location is Available.${NC}"
+  echo -e "\n${GREEN}✅ Backup Storage Location is Available.${NC}"
 else
-    echo -e "\n${RED}❌ Timeout waiting for Backup Storage Location.${NC}"
-    ssh_cmd "kubectl get backupstoragelocations -n velero" || true
-    ssh_cmd "kubectl describe backupstoragelocation default -n velero" || true
-    exit 1
+  echo -e "\n${RED}❌ Timeout waiting for Backup Storage Location.${NC}"
+  ssh_cmd "kubectl get backupstoragelocations -n velero" || true
+  ssh_cmd "kubectl describe backupstoragelocation default -n velero" || true
+  exit 1
 fi
 
 # STEP 12: Verify Traefik LoadBalancer has External IP
 echo -e "${YELLOW}⏳ Checking Traefik LoadBalancer External IP...${NC}"
 LB_READY=false
 for _ in $(seq 1 60); do
-    LB_IP=$(ssh_cmd "kubectl get svc traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null" || echo "")
-    if [ -n "$LB_IP" ] && [ "$LB_IP" != "" ]; then
-        LB_READY=true
-        break
-    fi
-    echo -n "."
-    sleep 5
+  LB_IP=$(ssh_cmd "kubectl get svc traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null" || echo "")
+  if [ -n "$LB_IP" ] && [ "$LB_IP" != "" ]; then
+    LB_READY=true
+    break
+  fi
+  echo -n "."
+  sleep 5
 done
 
 if [ "$LB_READY" = true ]; then
-    echo -e "\n${GREEN}✅ Traefik LoadBalancer is accessible at $LB_IP${NC}"
+  echo -e "\n${GREEN}✅ Traefik LoadBalancer is accessible at $LB_IP${NC}"
 else
-    echo -e "\n${RED}❌ Timeout waiting for LoadBalancer External IP.${NC}"
-    ssh_cmd "kubectl get svc -n traefik" || true
-    ssh_cmd "kubectl describe svc traefik -n traefik" || true
-    exit 1
+  echo -e "\n${RED}❌ Timeout waiting for LoadBalancer External IP.${NC}"
+  ssh_cmd "kubectl get svc -n traefik" || true
+  ssh_cmd "kubectl describe svc traefik -n traefik" || true
+  exit 1
 fi
 
 # Final Summary
@@ -338,9 +340,9 @@ echo "=== VERIFICATION SUMMARY ==="
 [[ "$LB_READY" == "true" ]] && echo "✅ LoadBalancer IP: $LB_IP" || echo "❌ LoadBalancer IP: FAILED"
 
 if [[ "$CCM_READY" == "true" && "$ARGOCD_READY" == "true" && "$ARGOCD_APP_SYNCED" == "true" && "$LONGHORN_READY" == "true" && "$TRAEFIK_READY" == "true" && "$VELERO_READY" == "true" && "$NODE_AGENT_READY" == "true" && "$BSL_READY" == "true" && "$LB_READY" == "true" ]]; then
-    echo -e "${GREEN}All systems operational.${NC}"
-    exit 0
+  echo -e "${GREEN}All systems operational.${NC}"
+  exit 0
 else
-    echo -e "${RED}Some checks failed. Review logs.${NC}"
-    exit 1
+  echo -e "${RED}Some checks failed. Review logs.${NC}"
+  exit 1
 fi

@@ -1,15 +1,11 @@
 #!/usr/bin/env bash
 #==============================================================================
 # test-backup-restore.sh — Automated Velero Backup/Restore Validation
-# Part of SDP Phase 0 final validation gate
+# Phase 0 final validation gate
 #
 # Tests: Populate → Backup → Destroy → Restore → Verify Data Integrity
-#
 # Usage: ./test-backup-restore.sh [-v|--verbose]
-#
-# Exit codes:
-#   0 — All steps passed, data integrity verified
-#   1 — Any step failed (details in output)
+# Exit codes: 0 = pass, 1 = fail
 #==============================================================================
 
 set -euo pipefail
@@ -20,41 +16,45 @@ STATEFULSET="postgres-test"
 POD_NAME="${STATEFULSET}-0"
 DB_NAME="testdb"
 DB_USER="postgres"
-DB_PASS="testpassword123"
-APP_NAME="test-backup"
-ARGOCD_NS="argocd"
 BACKUP_NAME="sdp-test-$(date +%Y%m%d-%H%M%S)"
 RESTORE_NAME="sdp-restore-$(date +%Y%m%d-%H%M%S)"
 TEST_TABLE="backup_validation"
 MARKER="SDP_PHASE0_$(date +%s)"
-MAX_WAIT=300          # 5 minutes max per wait operation
+MAX_WAIT=300
 POLL_INTERVAL=5
 
-# --- Verbose mode ---
+# --- State tracking ---
 VERBOSE=false
+ARGOCD_SUSPENDED=false
+
+# --- Argument parsing ---
 if [[ "${1:-}" == "-v" || "${1:-}" == "--verbose" ]]; then
   VERBOSE=true
 fi
 
-# --- Helpers ---
-log()   { echo "[$(date '+%H:%M:%S')] $*"; }
-debug() { $VERBOSE && echo "[$(date '+%H:%M:%S')] [DEBUG] $*" || true; }
+# --- Logging ---
+log() {
+  printf "[%s] %s\n" "$(date '+%H:%M:%S')" "$*" >&2
+}
 
-# --- State tracking ---
-ARGOCD_SUSPENDED=false
-TEST_DATA_INSERTED=false
-BACKUP_CREATED=false
+debug() {
+  if [[ "$VERBOSE" == "true" ]]; then
+    printf "[%s] [DEBUG] %s\n" "$(date '+%H:%M:%S')" "$*" >&2
+  fi
+}
 
+# --- Cleanup handler ---
 cleanup() {
   local exit_code=$?
   if [[ "$ARGOCD_SUSPENDED" == "true" && $exit_code -ne 0 ]]; then
-    log "WARNING: Failure during suspended ArgoCD — resuming sync to restore cluster state"
-    kubectl patch application "$APP_NAME" -n "$ARGOCD_NS" --type='merge' -p='{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}' 2>/dev/null || true
+    log "WARNING: Failure detected — resuming ArgoCD sync to restore cluster state"
+    kubectl patch application test-backup -n argocd --type='merge' \
+      -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}' 2>/dev/null || true
   fi
   if [[ $exit_code -eq 0 ]]; then
-    log "✅ All steps passed — backup/restore validated"
+    log "=== PASS: Backup/Restore validation completed successfully ==="
   else
-    log "❌ Test FAILED at exit code $exit_code"
+    log "=== FAIL: Backup/Restore validation failed at exit code $exit_code ==="
   fi
   exit $exit_code
 }
@@ -62,259 +62,242 @@ cleanup() {
 trap cleanup EXIT
 
 # --- Wait helpers ---
-wait_for() {
-  local label="$1"; shift
+wait_for_predicate() {
+  local description="$1"
+  shift
   local elapsed=0
   while ! "$@" >/dev/null 2>&1; do
-    sleep $POLL_INTERVAL
+    sleep "$POLL_INTERVAL"
     elapsed=$((elapsed + POLL_INTERVAL))
     if [[ $elapsed -ge $MAX_WAIT ]]; then
-      log "❌ TIMEOUT waiting for: $label (waited ${elapsed}s)"
+      log "TIMEOUT: $description (${elapsed}s exceeded ${MAX_WAIT}s limit)"
       return 1
     fi
-    debug "Waiting for: $label (${elapsed}s/${MAX_WAIT}s)"
+    debug "Waiting: $description (${elapsed}s/${MAX_WAIT}s)"
   done
-  log "✅ $label ready (${elapsed}s)"
+  log "READY: $description (${elapsed}s)"
 }
 
 wait_for_velero_phase() {
-  local resource="$1"    # backup or restore
+  local resource="$1"
   local name="$2"
-  local phase="$3"       # Completed
+  local expected_phase="$3"
   local elapsed=0
+
   while true; do
     local status
-    status=$(kubectl get "$resource" "$name" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-    if [[ "$status" == "$phase" ]]; then
-      log "✅ $resource '$name' reached phase: $phase (${elapsed}s)"
+    status="$(kubectl get "$resource" "$name" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")"
+
+    if [[ "$status" == "$expected_phase" ]]; then
+      log "VELERO: $resource '$name' reached phase: $status (${elapsed}s)"
       return 0
     fi
-    # Check for terminal failure phases
+
     if [[ "$status" == "Failed" || "$status" == "PartiallyFailed" ]]; then
-      log "❌ $resource '$name' entered phase: $status"
+      log "ERROR: $resource '$name' entered terminal phase: $status"
       return 1
     fi
-    sleep $POLL_INTERVAL
+
+    sleep "$POLL_INTERVAL"
     elapsed=$((elapsed + POLL_INTERVAL))
     if [[ $elapsed -ge $MAX_WAIT ]]; then
-      log "❌ TIMEOUT: $resource '$name' never reached $phase (waited ${elapsed}s, last status: ${status:-none})"
+      log "TIMEOUT: $resource '$name' never reached $expected_phase (last status: ${status:-none})"
       return 1
     fi
-    debug "$resource '$name' status: ${status:-pending} (${elapsed}s/${MAX_WAIT}s)"
+    debug "Velero $resource status: ${status:-pending} (${elapsed}s)"
   done
 }
 
-# ============================================================================
-# STEP 1: Verify prerequisites
-# ============================================================================
-log "=== Step 1: Verify Prerequisites ==="
+# --- Step 1: Prerequisites ---
+step_prerequisites() {
+  log "=== Step 1: Verify Prerequisites ==="
 
-# Velero must be running
-VELERO_PODS=$(kubectl get deployment velero -n velero -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
-if [[ "$VELERO_PODS" -lt 1 ]]; then
-  log "❌ Velero deployment not ready (${VELERO_PODS}/1 replicas)"
-  exit 1
-fi
-debug "Velero deployment: ${VELERO_PODS}/1 replicas"
+  local velero_pods node_agent bsl_phase test_pods
 
-# Node-Agent must be running
-NODE_AGENT=$(kubectl get daemonset node-agent -n velero -o jsonpath='{.status.numberReady}' 2>/dev/null || echo "0")
-if [[ "$NODE_AGENT" -lt 1 ]]; then
-  log "❌ Velero node-agent daemonset not ready (${NODE_AGENT} pods)"
-  exit 1
-fi
-debug "Node-agent pods: ${NODE_AGENT}"
+  velero_pods="$(kubectl get deployment velero -n velero -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")"
+  if [[ "$velero_pods" -lt 1 ]]; then
+    log "FAIL: Velero deployment not ready ($velero_pods/1 replicas)"
+    return 1
+  fi
+  debug "Velero: ${velero_pods}/1 replicas"
 
-# Backup Storage Location must be Available
-BSL_PHASE=$(kubectl get backupstoragelocation -n velero default -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-if [[ "$BSL_PHASE" != "Available" ]]; then
-  log "❌ Backup Storage Location not Available (current: ${BSL_PHASE:-unknown})"
-  exit 1
-fi
-debug "BSL phase: $BSL_PHASE"
+  node_agent="$(kubectl get daemonset node-agent -n velero -o jsonpath='{.status.numberReady}' 2>/dev/null || echo "0")"
+  if [[ "$node_agent" -lt 1 ]]; then
+    log "FAIL: Node-agent daemonset not ready ($node_agent pods)"
+    return 1
+  fi
+  debug "Node-agent: ${node_agent} pods"
 
-# Test workload must be running
-TEST_PODS=$(kubectl get statefulset "$STATEFULSET" -n "$NAMESPACE" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "")
-if [[ -z "$TEST_PODS" || "$TEST_PODS" -lt 1 ]]; then
-  log "❌ Test workload not running (${STATEFULSET} not found or 0 replicas)"
-  exit 1
-fi
-debug "Test workload: ${TEST_PODS}/1 replicas"
+  bsl_phase="$(kubectl get backupstoragelocation -n velero default -o jsonpath='{.status.phase}' 2>/dev/null || echo "")"
+  if [[ "$bsl_phase" != "Available" ]]; then
+    log "FAIL: Backup Storage Location not Available ($bsl_phase)"
+    return 1
+  fi
+  debug "BSL: $bsl_phase"
 
-log "All prerequisites verified"
+  test_pods="$(kubectl get statefulset "$STATEFULSET" -n "$NAMESPACE" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "")"
+  if [[ -z "$test_pods" || "$test_pods" -lt 1 ]]; then
+    log "FAIL: Test workload not running ($STATEFULSET not ready)"
+    return 1
+  fi
+  debug "Test workload: ${test_pods}/1 replicas"
 
-# ============================================================================
-# STEP 2: Populate test data
-# ============================================================================
-log "=== Step 2: Populate Test Data ==="
+  log "All prerequisites verified"
+}
 
-# Wait for pod to be ready
-wait_for "pod ${POD_NAME} Running" \
-  kubectl get pod "$POD_NAME" -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null | grep -q Running
+# --- Step 2: Populate data ---
+step_populate_data() {
+  log "=== Step 2: Populate Test Data ==="
 
-# Insert a marker row we can verify after restore
-log "Inserting marker row: $MARKER"
+  wait_for_predicate "Pod ${POD_NAME} Running" \
+    bash -c "kubectl get pod '$POD_NAME' -n '$NAMESPACE' -o jsonpath='{.status.phase}' 2>/dev/null | grep -q 'Running'"
 
-kubectl exec -n "$NAMESPACE" "$POD_NAME" -- \
-  psql -U "$DB_USER" -d "$DB_NAME" -c "DROP TABLE IF EXISTS ${TEST_TABLE};" 2>/dev/null || true
+  log "Inserting marker: $MARKER"
 
-kubectl exec -n "$NAMESPACE" "$POD_NAME" -- \
-  psql -U "$DB_USER" -d "$DB_NAME" -c "
-    CREATE TABLE ${TEST_TABLE} (
-      id SERIAL PRIMARY KEY,
-      marker TEXT NOT NULL,
-      created_at TIMESTAMP DEFAULT NOW()
-    );
-  "
+  kubectl exec -n "$NAMESPACE" "$POD_NAME" -- \
+    psql -U "$DB_USER" -d "$DB_NAME" -c "DROP TABLE IF EXISTS ${TEST_TABLE};" 2>/dev/null || true
 
-kubectl exec -n "$NAMESPACE" "$POD_NAME" -- \
-  psql -U "$DB_USER" -d "$DB_NAME" -c "INSERT INTO ${TEST_TABLE} (marker) VALUES ('${MARKER}');"
+  kubectl exec -n "$NAMESPACE" "$POD_NAME" -- \
+    psql -U "$DB_USER" -d "$DB_NAME" -c "
+CREATE TABLE ${TEST_TABLE} (
+  id SERIAL PRIMARY KEY,
+  marker TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);"
 
-# Verify the insert worked
-ROW_COUNT=$(kubectl exec -n "$NAMESPACE" "$POD_NAME" -- \
-  psql -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT COUNT(*) FROM ${TEST_TABLE} WHERE marker = '${MARKER}';" 2>/dev/null | tr -d ' ')
+  kubectl exec -n "$NAMESPACE" "$POD_NAME" -- \
+    psql -U "$DB_USER" -d "$DB_NAME" -c "INSERT INTO ${TEST_TABLE} (marker) VALUES ('${MARKER}');"
 
-if [[ "${ROW_COUNT:-0}" -ne 1 ]]; then
-  log "❌ Failed to insert test data (row count: ${ROW_COUNT:-0})"
-  exit 1
-fi
+  local row_count
+  row_count="$(kubectl exec -n "$NAMESPACE" "$POD_NAME" -- \
+    psql -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT COUNT(*) FROM ${TEST_TABLE} WHERE marker = '${MARKER}';" 2>/dev/null | tr -d ' ')"
 
-TEST_DATA_INSERTED=true
-log "Test data inserted and verified (marker: $MARKER)"
+  if [[ "${row_count:-0}" -ne 1 ]]; then
+    log "FAIL: Data insert verification failed (count: ${row_count:-0})"
+    return 1
+  fi
 
-# ============================================================================
-# STEP 3: Create Velero backup
-# ============================================================================
-log "=== Step 3: Create Velero Backup ==="
+  log "Data inserted and verified (marker: $MARKER)"
+}
 
-log "Creating backup: $BACKUP_NAME (namespace: $NAMESPACE)"
-velero backup create "$BACKUP_NAME" \
-  --include-namespaces "$NAMESPACE" \
-  --wait \
-  --timeout 5m 2>/dev/null || true
+# --- Step 3: Create backup ---
+step_create_backup() {
+  log "=== Step 3: Create Velero Backup ==="
 
-# Even with --wait, poll explicitly to be sure
-wait_for_velero_phase backup "$BACKUP_NAME" Completed
+  log "Creating backup: $BACKUP_NAME (namespace: $NAMESPACE)"
+  velero backup create "$BACKUP_NAME" \
+    --include-namespaces "$NAMESPACE" \
+    --wait \
+    --timeout 5m 2>/dev/null || true
 
-BACKUP_CREATED=true
-log "Backup completed: $BACKUP_NAME"
+  wait_for_velero_phase backup "$BACKUP_NAME" "Completed"
 
-# Verify backup has volume snapshots
-VOLUME_SNAPSHOTS=$(kubectl get backup "$BACKUP_NAME" -o jsonpath='{.status.volumeBackups}' 2>/dev/null | jq 'length' 2>/dev/null || echo "0")
-debug "Volume snapshots in backup: ${VOLUME_SNAPSHOTS}"
-if [[ "${VOLUME_SNAPSHOTS:-0}" -lt 1 ]]; then
-  log "⚠️  WARNING: No volume snapshots in backup — PVC data may not be captured. Continuing anyway..."
-fi
+  local vol_snapshots
+  vol_snapshots="$(kubectl get backup "$BACKUP_NAME" -o jsonpath='{.status.volumeBackups}' 2>/dev/null | jq 'length' 2>/dev/null || echo "0")"
+  debug "Volume snapshots: ${vol_snapshots}"
+}
 
-# ============================================================================
-# STEP 4: Delete test workload
-# ============================================================================
-log "=== Step 4: Delete Test Workload ==="
+# --- Step 4: Delete workload ---
+step_delete_workload() {
+  log "=== Step 4: Delete Test Workload ==="
 
-# Suspend ArgoCD auto-sync to prevent it from immediately recreating the namespace
-log "Suspending ArgoCD auto-sync for: $APP_NAME"
-kubectl patch application "$APP_NAME" -n "$ARGOCD_NS" \
-  --type='json' \
-  -p='[{"op":"replace","path":"/spec/syncPolicy/automated","value":null}]' 2>/dev/null || true
+  log "Suspending ArgoCD auto-sync for test-backup"
+  kubectl patch application test-backup -n argocd \
+    --type='json' \
+    -p '[{"op":"remove","path":"/spec/syncPolicy"}]' 2>/dev/null || true
 
-ARGOCD_SUSPENDED=true
-log "ArgoCD auto-sync suspended"
+  ARGOCD_SUSPENDED=true
 
-# Delete the namespace (this removes pods + PVCs)
-log "Deleting namespace: $NAMESPACE"
-kubectl delete namespace "$NAMESPACE" --ignore-not-found=true
+  log "Deleting namespace: $NAMESPACE"
+  kubectl delete namespace "$NAMESPACE" --ignore-not-found=true
 
-# Wait for namespace to be gone
-wait_for "namespace $NAMESPACE deleted" \
-  bash -c "! kubectl get namespace '$NAMESPACE' >/dev/null 2>&1"
+  wait_for_predicate "Namespace $NAMESPACE deleted" \
+    bash -c "! kubectl get namespace '$NAMESPACE' >/dev/null 2>&1"
 
-# Wait for PVC to be fully gone
-wait_for "PVC data-${POD_NAME} deleted" \
-  bash -c "! kubectl get pvc \"data-${POD_NAME}\" -n '$NAMESPACE' >/dev/null 2>&1"
+  log "Namespace deleted"
+}
 
-log "Namespace and all resources deleted"
+# --- Step 5: Restore ---
+step_restore_backup() {
+  log "=== Step 5: Restore from Backup ==="
 
-# ============================================================================
-# STEP 5: Restore from backup
-# ============================================================================
-log "=== Step 5: Restore from Backup ==="
+  log "Creating restore: $RESTORE_NAME from $BACKUP_NAME"
+  velero restore create "$RESTORE_NAME" \
+    --from-backup "$BACKUP_NAME" \
+    --wait \
+    --timeout 5m 2>/dev/null || true
 
-log "Creating restore: $RESTORE_NAME from backup: $BACKUP_NAME"
-velero restore create "$RESTORE_NAME" \
-  --from-backup "$BACKUP_NAME" \
-  --wait \
-  --timeout 5m 2>/dev/null || true
+  wait_for_velero_phase restore "$RESTORE_NAME" "Completed"
 
-wait_for_velero_phase restore "$RESTORE_NAME" Completed
+  local restore_errors restore_warnings
+  restore_errors="$(kubectl get restore "$RESTORE_NAME" -o jsonpath='{.status.errors}' 2>/dev/null || echo "0")"
+  restore_warnings="$(kubectl get restore "$RESTORE_NAME" -o jsonpath='{.status.warnings}' 2>/dev/null || echo "0")"
+  debug "Restore errors: ${restore_errors}, warnings: ${restore_warnings}"
+}
 
-# Check restore results for warnings/errors
-RESTORE_ERRORS=$(kubectl get restore "$RESTORE_NAME" -o jsonpath='{.status.errors}' 2>/dev/null || echo "0")
-RESTORE_WARNINGS=$(kubectl get restore "$RESTORE_NAME" -o jsonpath='{.status.warnings}' 2>/dev/null || echo "0")
-debug "Restore errors: ${RESTORE_ERRORS}, warnings: ${RESTORE_WARNINGS}"
+# --- Step 6: Verify restored workload ---
+step_verify_restored() {
+  log "=== Step 6: Verify Restored Workload ==="
 
-log "Restore completed: $RESTORE_NAME"
+  wait_for_predicate "StatefulSet $STATEFULSET exists" \
+    bash -c "kubectl get statefulset '$STATEFULSET' -n '$NAMESPACE' >/dev/null 2>&1"
 
-# ============================================================================
-# STEP 6: Verify restored workload
-# ============================================================================
-log "=== Step 6: Verify Restored Workload ==="
+  wait_for_predicate "StatefulSet $STATEFULSET ready (1/1)" \
+    bash -c "[ \"\$(kubectl get statefulset '$STATEFULSET' -n '$NAMESPACE' -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)\" -ge 1 ]"
 
-# Wait for StatefulSet to come back
-wait_for "StatefulSet $STATEFULSET exists" \
-  kubectl get statefulset "$STATEFULSET" -n "$NAMESPACE" 2>/dev/null | grep -q .
+  wait_for_predicate "Pod ${POD_NAME} Running" \
+    bash -c "kubectl get pod '$POD_NAME' -n '$NAMESPACE' -o jsonpath='{.status.phase}' 2>/dev/null | grep -q 'Running'"
 
-wait_for "StatefulSet $STATEFULSET ready (1/1)" \
-  bash -c "[ \"\$(kubectl get statefulset $STATEFULSET -n $NAMESPACE -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)\" -ge 1 ]"
+  sleep 5
+  log "Restored workload is running"
+}
 
-# Wait for pod to be Running
-wait_for "pod ${POD_NAME} Running" \
-  kubectl get pod "$POD_NAME" -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null | grep -q Running
+# --- Step 7: Verify data integrity ---
+step_verify_data() {
+  log "=== Step 7: Verify Data Integrity ==="
 
-log "Restored workload is running"
+  local restored_marker
+  restored_marker="$(kubectl exec -n "$NAMESPACE" "$POD_NAME" -- \
+    psql -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT marker FROM ${TEST_TABLE} LIMIT 1;" 2>/dev/null | tr -d ' \n')"
 
-# ============================================================================
-# STEP 7: Verify data integrity
-# ============================================================================
-log "=== Step 7: Verify Data Integrity ==="
+  if [[ "$restored_marker" == "$MARKER" ]]; then
+    log "PASS: Data integrity verified (marker: $restored_marker)"
+  else
+    log "FAIL: Data integrity mismatch — expected '$MARKER', got '${restored_marker:-empty}'"
+    return 1
+  fi
+}
 
-# Give PostgreSQL a moment to initialize
-sleep 5
+# --- Step 8: Resume ArgoCD ---
+step_resume_argocd() {
+  log "=== Step 8: Resume ArgoCD ==="
 
-RESTORED_MARKER=$(kubectl exec -n "$NAMESPACE" "$POD_NAME" -- \
-  psql -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT marker FROM ${TEST_TABLE} LIMIT 1;" 2>/dev/null | tr -d ' \n')
+  kubectl patch application test-backup -n argocd \
+    --type='merge' \
+    -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}' 2>/dev/null || true
 
-if [[ "$RESTORED_MARKER" == "$MARKER" ]]; then
-  log "✅ Data integrity VERIFIED — marker '$RESTORED_MARKER' matches expected '$MARKER'"
-else
-  log "❌ Data integrity FAILED — expected '$MARKER', got '${RESTORED_MARKER:-empty}'"
-  exit 1
-fi
+  ARGOCD_SUSPENDED=false
+  log "ArgoCD auto-sync resumed"
+}
 
-# ============================================================================
-# STEP 8: Resume ArgoCD and cleanup
-# ============================================================================
-log "=== Step 8: Resume ArgoCD ==="
+# --- Main execution ---
+main() {
+  step_prerequisites || return 1
+  step_populate_data || return 1
+  step_create_backup || return 1
+  step_delete_workload || return 1
+  step_restore_backup || return 1
+  step_verify_restored || return 1
+  step_verify_data || return 1
+  step_resume_argocd || return 1
 
-# Re-enable ArgoCD auto-sync
-kubectl patch application "$APP_NAME" -n "$ARGOCD_NS" \
-  --type='merge' \
-  -p='{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}' 2>/dev/null || true
+  log ""
+  log "========================================"
+  log "  Phase 0 Final Validation: PASS"
+  log "========================================"
+  log "Backup:    $BACKUP_NAME"
+  log "Restore:   $RESTORE_NAME"
+  log "========================================"
+}
 
-ARGOCD_SUSPENDED=false
-log "ArgoCD auto-sync resumed"
-
-# ============================================================================
-# SUMMARY
-# ============================================================================
-echo ""
-log "============================================="
-log "  SDP Phase 0 — Backup/Restore Test PASSED"
-log "============================================="
-log "Backup:    $BACKUP_NAME"
-log "Restore:   $RESTORE_NAME"
-log "Marker:    $MARKER"
-log "Verified:  Data intact after destroy → restore"
-log "============================================="
-echo ""
-
-exit 0
+main
