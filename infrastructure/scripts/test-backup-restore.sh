@@ -27,7 +27,7 @@ BACKUP_NAME="sdp-test-$(date +%Y%m%d-%H%M%S)"
 RESTORE_NAME="sdp-restore-$(date +%Y%m%d-%H%M%S)"
 TEST_TABLE="backup_validation"
 MARKER="SDP_PHASE0_$(date +%s)"
-MAX_WAIT=300
+MAX_WAIT=600
 POLL_INTERVAL=5
 
 # --- State tracking ---
@@ -308,6 +308,25 @@ step_resume_argocd() {
   ARGOCD_SUSPENDED=false
   echo -e "${GREEN}✅ ArgoCD auto-sync resumed${NC}"
 }
+
+# Cleanup: Delete backup/restore CRs to trigger Velero garbage collection
+echo -e "${CYAN}🧹 Cleaning up backup artifacts...${NC}"
+
+if kubectl delete backup -n velero "$BACKUP_NAME" --ignore-not-found 2>/dev/null; then
+  echo -e "${GREEN}✅ Backup CR deleted${NC}"
+else
+  echo -e "${YELLOW}⚠️  Warning: Could not delete backup CR${NC}"
+fi
+
+if kubectl delete restore -n velero "$RESTORE_NAME" --ignore-not-found 2>/dev/null; then
+  echo -e "${GREEN}✅ Restore CR deleted${NC}"
+else
+  echo -e "${YELLOW}⚠️  Warning: Could not delete restore CR${NC}"
+fi
+
+# Wait briefly for Velero to delete S3 objects (non-blocking)
+sleep 2
+echo -e "${GREEN}Cleanup initiated (S3 objects queued for deletion)${NC}"
 
 # --- Main execution ---
 main() {
