@@ -201,7 +201,7 @@ step_create_backup() {
 
   echo -e "${CYAN}📦 Creating backup: $BACKUP_NAME (namespace: $NAMESPACE)${NC}"
   kubectl exec -n velero deploy/velero -- \
-    velero backup create "$BACKUP_NAME" \
+    /velero backup create "$BACKUP_NAME" \
       --include-namespaces "$NAMESPACE" \
       --timeout 5m
 
@@ -238,7 +238,7 @@ step_restore_backup() {
 
   echo -e "${CYAN}♻️  Creating restore: $RESTORE_NAME from $BACKUP_NAME${NC}"
   kubectl exec -n velero deploy/velero -- \
-    velero restore create "$RESTORE_NAME" \
+    /velero restore create "$RESTORE_NAME" \
       --from-backup "$BACKUP_NAME" \
       --timeout 5m
 
