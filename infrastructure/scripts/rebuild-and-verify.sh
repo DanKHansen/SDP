@@ -33,6 +33,7 @@ CLEAN_FLAGS=""
 
 # Single TIMESTAMP for all logging (correlated timestamps)
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+LOG_DIR="${HOME}/Documents/DKH Dataengineering/DataPlatform/debug/debug-${TIMESTAMP}"
 
 APPLIED=false
 APPLY_SUCCESS=false
@@ -46,7 +47,6 @@ collect_debug_logs() {
   echo -e "${YELLOW}⚠️  Collecting debug logs before cleanup...${NC}"
 
   # Create log directory ONLY on failure
-  LOG_DIR="$HOME/Documents/DKH Dataengineering/DataPlatform/debug/debug-${TIMESTAMP}"
   mkdir -p "$LOG_DIR" 2>/dev/null || true
 
   # Save failed step info
@@ -301,10 +301,14 @@ if [[ "$VERIFY_RC" -eq 0 ]]; then
 
   # Auto-restore kubeconfig from master
   echo -e "${CYAN}📋 Restoring kubeconfig...${NC}"
-  scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
-    "root@$MASTER_IP:/etc/rancher/k3s/k3s.yaml" ~/.kube/config
-  sed -i "s/server: https:\/\/127.0.0.1:6443/server: https:\/\/$MASTER_IP:6443/" ~/.kube/config
-  echo -e "${GREEN}✅ kubeconfig restored ($MASTER_IP)${NC}"
+  mkdir -p ~/.kube 2>/dev/null || true  # Ensure directory exists
+  if scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+      "root@${MASTER_IP}:/etc/rancher/k3s/k3s.yaml" ~/.kube/config 2>/dev/null; then
+    sed -i "s|server: https://127.0.0.1:6443|server: https://${MASTER_IP}:6443|" ~/.kube/config
+    echo -e "${GREEN}✅ kubeconfig restored (${MASTER_IP})${NC}"
+  else
+    echo -e "${YELLOW}⚠️  Warning: Could not restore kubeconfig (manual export may be needed)${NC}"
+  fi
 
   echo -e "${GREEN}🎉 Rebuild cycle complete.${NC}"
 else
