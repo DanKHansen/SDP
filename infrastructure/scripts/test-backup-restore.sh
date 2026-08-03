@@ -200,10 +200,17 @@ step_create_backup() {
   echo -e "${YELLOW}⏳ Step 3: Create Velero Backup...${NC}"
 
   echo -e "${CYAN}📦 Creating backup: $BACKUP_NAME (namespace: $NAMESPACE)${NC}"
-  kubectl exec -n velero deploy/velero -- \
-    /velero backup create "$BACKUP_NAME" \
-      --include-namespaces "$NAMESPACE" \
-      --timeout 5m
+  cat <<EOF | kubectl apply -f -
+apiVersion: velero.io/v1
+kind: Backup
+metadata:
+  name: $BACKUP_NAME
+  namespace: velero
+spec:
+  includedNamespaces:
+    - $NAMESPACE
+  ttl: 720h0m0s
+EOF
 
   wait_for_velero_phase backup "$BACKUP_NAME" "Completed"
 
@@ -237,10 +244,17 @@ step_restore_backup() {
   echo -e "${YELLOW}⏳ Step 5: Restore from Backup...${NC}"
 
   echo -e "${CYAN}♻️  Creating restore: $RESTORE_NAME from $BACKUP_NAME${NC}"
-  kubectl exec -n velero deploy/velero -- \
-    /velero restore create "$RESTORE_NAME" \
-      --from-backup "$BACKUP_NAME" \
-      --timeout 5m
+  cat <<EOF | kubectl apply -f -
+apiVersion: velero.io/v1
+kind: Restore
+metadata:
+  name: $RESTORE_NAME
+  namespace: velero
+spec:
+  backupName: $BACKUP_NAME
+  includedNamespaces:
+    - $NAMESPACE
+EOF
 
   wait_for_velero_phase restore "$RESTORE_NAME" "Completed"
 
