@@ -309,24 +309,26 @@ step_resume_argocd() {
   echo -e "${GREEN}✅ ArgoCD auto-sync resumed${NC}"
 }
 
-# Cleanup: Delete backup/restore CRs to trigger Velero garbage collection
-echo -e "${CYAN}🧹 Cleaning up backup artifacts...${NC}"
+# --- Cleanup: Delete backup/restore CRs ---
+cleanup_artifacts() {
+  echo -e "${CYAN}🧹 Cleaning up backup artifacts...${NC}"
 
-if kubectl delete backup -n velero "$BACKUP_NAME" --ignore-not-found 2>/dev/null; then
-  echo -e "${GREEN}✅ Backup CR deleted${NC}"
-else
-  echo -e "${YELLOW}⚠️  Warning: Could not delete backup CR${NC}"
-fi
+  if kubectl delete backup -n velero "$BACKUP_NAME" --ignore-not-found 2>/dev/null; then
+    echo -e "${GREEN}✅ Backup CR deleted${NC}"
+  else
+    echo -e "${YELLOW}⚠️  Warning: Could not delete backup CR${NC}"
+  fi
 
-if kubectl delete restore -n velero "$RESTORE_NAME" --ignore-not-found 2>/dev/null; then
-  echo -e "${GREEN}✅ Restore CR deleted${NC}"
-else
-  echo -e "${YELLOW}⚠️  Warning: Could not delete restore CR${NC}"
-fi
+  if kubectl delete restore -n velero "$RESTORE_NAME" --ignore-not-found 2>/dev/null; then
+    echo -e "${GREEN}✅ Restore CR deleted${NC}"
+  else
+    echo -e "${YELLOW}⚠️  Warning: Could not delete restore CR${NC}"
+  fi
 
-# Wait briefly for Velero to delete S3 objects (non-blocking)
-sleep 2
-echo -e "${GREEN}Cleanup initiated (S3 objects queued for deletion)${NC}"
+  # Wait briefly for Velero to delete S3 objects (non-blocking)
+  sleep 2
+  echo -e "${GREEN}Cleanup initiated (S3 objects queued for deletion)${NC}"
+}
 
 # --- Main execution ---
 main() {
@@ -353,6 +355,9 @@ main() {
   step_verify_restored || return 1
   step_verify_data || return 1
   step_resume_argocd || return 1
+
+  # Cleanup: Delete backup/restore CRs (after success)
+  cleanup_artifacts
 
   echo ""
   echo -e "${GREEN}======================================${NC}"
