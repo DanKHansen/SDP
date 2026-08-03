@@ -305,6 +305,12 @@ main() {
   }
   echo -e "${GREEN}✅ Velero deployment ready${NC}"
 
+  # Wait for test workload to sync via ArgoCD (may lag behind build completion)
+  echo -e "${CYAN}⏳ Waiting for test-workload StatefulSet...${NC}"
+  wait_for_predicate "StatefulSet ${STATEFULSET} ready (1/1)" \
+    bash -c "[ \"\$(kubectl get statefulset '${STATEFULSET}' -n '${NAMESPACE}' -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)\" -ge 1 ]"
+  echo -e "${GREEN}✅ Test workload ready${NC}"
+
   # Now proceed with actual test steps
   step_prerequisites || return 1
   step_populate_data || return 1
