@@ -301,9 +301,9 @@ if [[ "$VERIFY_RC" -eq 0 ]]; then
 
   # Auto-restore kubeconfig from master
   echo -e "${CYAN}📋 Restoring kubeconfig...${NC}"
-  mkdir -p ~/.kube 2>/dev/null || true  # Ensure directory exists
+  mkdir -p ~/.kube 2>/dev/null || true # Ensure directory exists
   if scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
-      "root@${MASTER_IP}:/etc/rancher/k3s/k3s.yaml" ~/.kube/config 2>/dev/null; then
+    "root@${MASTER_IP}:/etc/rancher/k3s/k3s.yaml" ~/.kube/config 2>/dev/null; then
     sed -i "s|server: https://127.0.0.1:6443|server: https://${MASTER_IP}:6443|" ~/.kube/config
     echo -e "${GREEN}✅ kubeconfig restored (${MASTER_IP})${NC}"
   else
